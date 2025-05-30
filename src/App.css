@@ -1,9 +1,78 @@
-.App {
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
   text-align: center;
 }
 
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Este seletor é bem específico, aplicando-se a um logo dentro do segundo link <a> */
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* Estilos da aplicação principal e layout */
+.App {
+  display: flex; /* Pode ser mantido ou removido se o SideMenu for fixo e o App-content o único filho restante no fluxo */
+  /* text-align: center; /* Geralmente herdado de #root ou definido em componentes específicos */
+}
+
+/* Estilos para o SideMenu */
+.App > nav { /* Seletor para a tag nav que é o SideMenu, filho direto de .App */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 240px; /* Largura desejada para o SideMenu */
+  height: 100vh; /* Altura total da viewport */
+  background-color: white; /* Cor de fundo alterada para branco */
+  padding: 10px; /* Espaçamento interno */
+  box-shadow: 2px 0 5px rgba(0,0,0,0.1); /* Sombra para destaque à direita */
+  z-index: 1000; /* Para garantir que fique acima de outros elementos */
+  box-sizing: border-box; /* Padding e border incluídos na largura/altura */
+  overflow-y: auto; /* Adiciona scroll se o conteúdo do menu for maior que a altura */
+}
+
+.App-content {
+  flex-grow: 1;
+  padding: 20px; /* Ajuste conforme o padding de #root ou necessidade */
+  margin-left: 240px; /* Mesma largura definida para o .App > nav */
+  /* Considere adicionar text-align: left; se o conteúdo principal não deve ser centralizado por padrão */
+}
+
+/* Estilos para o logo específico da aplicação (se houver um diferente do .logo genérico) */
 .App-logo {
-  height: 40vmin;
+  height: 40vmin; /* Exemplo do CRA, ajuste conforme necessário */
   pointer-events: none;
 }
 
@@ -13,21 +82,7 @@
   }
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
-}
-
-.App-link {
-  color: #61dafb;
-}
-
+/* Animação para .App-logo (diferente de logo-spin para .logo genérico) */
 @keyframes App-logo-spin {
   from {
     transform: rotate(0deg);
@@ -36,3 +91,35 @@
     transform: rotate(360deg);
   }
 }
+
+/* Estilos para um possível cabeçalho da aplicação.
+   Revise se este estilo de cabeçalho ainda é necessário ou se encaixa no design.
+   O estilo min-height: 100vh; e flex-grow: 1; são bastante dominantes.
+*/
+.App-header {
+  background-color: #282c34;
+  /* min-height: 100vh; */ /* Considere remover ou ajustar se não for um cabeçalho de página inteira */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+  /* flex-grow: 1; */ /* Ajuste se o App-header for um item flex principal */
+  padding: 20px; /* Consistência com outros paddings */
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+/* Exemplo de estilos para o SideMenu (pode estar em seu próprio arquivo CSS) */
+/*
+nav.SideMenu {  // Este bloco comentado pode ser removido ou adaptado para .App > nav
+  width: 250px;
+  background-color: #f0f0f0;
+  padding: 10px;
+  height: 100vh; // Para ocupar a altura total
+  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
+*/
