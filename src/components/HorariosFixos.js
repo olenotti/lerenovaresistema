@@ -288,17 +288,65 @@ export default function HorariosFixos() {
     setLoading(prev => ({ ...prev, action: false }));
   };
 
-  const handleDeleteFixo = async (id) => {
-    if (!window.confirm("Excluir este horário fixo permanentemente?")) return;
-    setLoading(prev => ({ ...prev, action: true }));
-    const { error } = await supabase.from('fixed_schedules').delete().eq('id', id);
-    if (error) {
-      setSnackbar({ open: true, message: `Erro ao excluir: ${error.message}`, severity: "error" });
-    } else {
-      setSnackbar({ open: true, message: "Horário fixo excluído!", severity: "success" });
-      await fetchFixedSchedules();
+   const handleDeleteFixo = async (id) => {
+    console.log("Tentando excluir horário fixo com ID:", id);
+    if (!id) {
+      console.error("ID do horário fixo é inválido ou não fornecido.");
+      setSnackbar({ open: true, message: "Erro: ID inválido para exclusão.", severity: "error" });
+      return;
     }
-    setLoading(prev => ({ ...prev, action: false }));
+
+    // ADICIONE ESTA VERIFICAÇÃO DE AUTENTICAÇÃO
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.error("Erro de autenticação ou usuário não encontrado:", authError);
+      setSnackbar({ open: true, message: "Erro de autenticação. Faça login novamente.", severity: "error" });
+      setLoading(prev => ({ ...prev, action: false })); // Certifique-se de parar o loading
+      return;
+    }
+    console.log("Usuário autenticado para exclusão:", user);
+    // FIM DA VERIFICAÇÃO DE AUTENTICAÇÃO
+
+    if (!window.confirm("Excluir este horário fixo permanentemente?")) {
+      console.log("Exclusão cancelada pelo usuário.");
+      return;
+    }
+
+    console.log("Usuário confirmou a exclusão.");
+    setLoading(prev => ({ ...prev, action: true }));
+    try {
+      // Modificado para inspecionar a resposta completa
+      const deleteResponse = await supabase
+        .from('fixed_schedules')
+        .delete()
+        .eq('id', id);
+
+      console.log("Resposta completa da exclusão do Supabase:", deleteResponse);
+
+      // Verifica o erro, o status HTTP e a contagem de linhas afetadas
+      if (deleteResponse.error) {
+        console.error("Erro ao excluir horário fixo do Supabase:", deleteResponse.error);
+        setSnackbar({ open: true, message: `Erro ao excluir: ${deleteResponse.error.message}`, severity: "error" });
+      } else if (deleteResponse.status >= 200 && deleteResponse.status < 300 && (deleteResponse.count === null || deleteResponse.count > 0)) {
+        // Considera sucesso se não houver erro, status 2xx, e count > 0 (ou null, pois count pode não ser retornado em alguns casos de RLS mesmo com sucesso)
+        // A verificação de count > 0 é ideal, mas RLS pode fazer com que count seja 0 mesmo se a política permitir e a linha existir,
+        // se a política de SELECT não permitir ver a linha após a exclusão para o mesmo usuário na mesma transação implícita.
+        // No entanto, o problema principal é que a linha NÃO está sendo excluída do banco.
+        console.log("Horário fixo aparentemente excluído. Status:", deleteResponse.status, "Count:", deleteResponse.count);
+        setSnackbar({ open: true, message: "Horário fixo excluído!", severity: "success" });
+        await fetchFixedSchedules(); // Re-busca a lista para atualizar a UI
+      } else {
+        // Nenhum erro explícito, mas o status ou a contagem (se disponível e 0) sugerem falha.
+        console.warn("Exclusão do Supabase não reportou erro, mas status/contagem indicam falha ou nenhuma linha afetada.", deleteResponse);
+        setSnackbar({ open: true, message: "Falha ao excluir horário fixo. Nenhuma linha afetada ou resposta inesperada.", severity: "warning" });
+        // Não chamar fetchFixedSchedules aqui se acreditamos que não funcionou, para evitar confusão.
+      }
+    } catch (catchError) {
+      console.error("Erro inesperado em handleDeleteFixo:", catchError);
+      setSnackbar({ open: true, message: `Erro inesperado: ${catchError.message}`, severity: "error" });
+    } finally {
+      setLoading(prev => ({ ...prev, action: false }));
+    }
   };
 
   const handleToggleAtivo = async (fixo) => {
