@@ -1,8 +1,8 @@
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  /* max-width: 1280px; /* Você pode manter isso se quiser um contêiner central máximo, mas o layout flex do App.js pode ser mais dominante */
+  /* margin: 0 auto; */ /* Idem ao acima */
+  /* padding: 2rem; */ /* O padding agora é melhor controlado pelo Box principal no App.js */
+  /* text-align: center; */ /* O alinhamento de texto deve ser por componente, não global aqui */
 }
 
 .logo {
@@ -44,31 +44,43 @@
 
 /* Estilos da aplicação principal e layout */
 .App {
-  display: flex; /* Pode ser mantido ou removido se o SideMenu for fixo e o App-content o único filho restante no fluxo */
-  /* text-align: center; /* Geralmente herdado de #root ou definido em componentes específicos */
+  /* display: flex; */ /* O Box do Material-UI em App.js já define display: flex */
+  min-height: 100vh;
+  /* background-color: #f4f6f8; */ /* A cor de fundo é definida no tema do Material-UI (background.default) */
 }
 
-/* Estilos para o SideMenu */
-.App > nav { /* Seletor para a tag nav que é o SideMenu, filho direto de .App */
+/* Estilos para o SideMenu - Comentados ou Removidos */
+/* O Drawer do Material-UI agora controla a aparência e o comportamento do SideMenu.
+   Estilos específicos para o Drawer (cor de fundo, cor do texto, etc.)
+   são aplicados diretamente no tema do Material-UI em App.js ou via prop sx no SideMenu.js.
+*/
+/*
+.App > nav {
   position: fixed;
   top: 0;
   left: 0;
-  width: 240px; /* Largura desejada para o SideMenu */
-  height: 100vh; /* Altura total da viewport */
-  background-color: white; /* Cor de fundo alterada para branco */
-  padding: 10px; /* Espaçamento interno */
-  box-shadow: 2px 0 5px rgba(0,0,0,0.1); /* Sombra para destaque à direita */
-  z-index: 1000; /* Para garantir que fique acima de outros elementos */
-  box-sizing: border-box; /* Padding e border incluídos na largura/altura */
-  overflow-y: auto; /* Adiciona scroll se o conteúdo do menu for maior que a altura */
+  width: 240px;
+  height: 100vh;
+  background-color: white;
+  padding: 10px;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+  z-index: 1000;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
+*/
 
+/* Estilos para o conteúdo principal - Comentados ou Removidos */
+/* O Box do Material-UI (component="main") em App.js agora controla o padding,
+   o flex-grow e o margin-left (condicionalmente para telas maiores).
+*/
+/*
 .App-content {
   flex-grow: 1;
-  padding: 20px; /* Ajuste conforme o padding de #root ou necessidade */
-  margin-left: 240px; /* Mesma largura definida para o .App > nav */
-  /* Considere adicionar text-align: left; se o conteúdo principal não deve ser centralizado por padrão */
+  padding: 20px;
+  margin-left: 240px;
 }
+*/
 
 /* Estilos para o logo específico da aplicação (se houver um diferente do .logo genérico) */
 .App-logo {
@@ -92,34 +104,21 @@
   }
 }
 
-/* Estilos para um possível cabeçalho da aplicação.
-   Revise se este estilo de cabeçalho ainda é necessário ou se encaixa no design.
-   O estilo min-height: 100vh; e flex-grow: 1; são bastante dominantes.
+/* Estilos para um possível cabeçalho da aplicação. */
+/* Se você não estiver usando uma classe .App-header separada, pode remover isso.
+   O AppBar do Material-UI é usado para o cabeçalho em mobile.
 */
 .App-header {
   background-color: #282c34;
-  /* min-height: 100vh; */ /* Considere remover ou ajustar se não for um cabeçalho de página inteira */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   font-size: calc(10px + 2vmin);
   color: white;
-  /* flex-grow: 1; */ /* Ajuste se o App-header for um item flex principal */
-  padding: 20px; /* Consistência com outros paddings */
+  padding: 20px;
 }
 
 .App-link {
   color: #61dafb;
 }
-
-/* Exemplo de estilos para o SideMenu (pode estar em seu próprio arquivo CSS) */
-/*
-nav.SideMenu {  // Este bloco comentado pode ser removido ou adaptado para .App > nav
-  width: 250px;
-  background-color: #f0f0f0;
-  padding: 10px;
-  height: 100vh; // Para ocupar a altura total
-  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-}
-*/
