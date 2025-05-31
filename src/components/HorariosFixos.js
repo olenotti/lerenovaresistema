@@ -160,19 +160,23 @@ export default function HorariosFixos() {
       setForm(f => ({ ...f, client_package_id: "", duration_period: "", is_avulsa: true }));
       return;
     }
+
     if (activePackagesForSelectedClient.length > 0) {
-      const defaultPackage = activePackagesForSelectedClient.length === 1 ? activePackagesForSelectedClient[0] : null;
+      // Modificado: Pega o primeiro pacote se houver algum, ou null se não houver.
+      const defaultPackage = activePackagesForSelectedClient[0]; 
       const packageDuration = defaultPackage?.packages?.session_duration_text || defaultPackage?.session_duration_text || "";
+      
       setForm(f => ({
         ...f,
-        is_avulsa: !defaultPackage,
+        is_avulsa: !defaultPackage, // Será false se defaultPackage existir
         client_package_id: defaultPackage ? defaultPackage.id : "",
         duration_period: packageDuration,
       }));
     } else {
+      // Nenhum pacote ativo, então é avulsa
       setForm(f => ({ ...f, client_package_id: "", duration_period: "", is_avulsa: true }));
     }
-  }, [form.client_id, activePackagesForSelectedClient]);
+  }, [form.client_id, activePackagesForSelectedClient]); // Mantenha as dependências
 
   useEffect(() => { // Atualizar período se pacote mudar ou se tornar avulsa
     if (form.is_avulsa) {
