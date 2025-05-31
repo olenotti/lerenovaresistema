@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import './App.css';
 import SideMenu from './components/SideMenu';
 import ClientManager from './components/ClientManager';
@@ -8,30 +8,34 @@ import ClienteConsultaView from './components/ClienteConsultaView';
 import HorariosFixos from './components/HorariosFixos';
 import ControleAtendimentosView from './components/ControleAtendimentosView';
 import AgendaVisual from './components/AgendaVisual';
-// import Configuracoes from './components/Configuracoes';
-import Login from './components/Login'; // Import the Login component
-import { supabase } from './supabaseClient'; // Ensure supabase is imported
+import Login from './components/Login';
+import { supabase } from './supabaseClient';
 
-import { Box, CssBaseline, IconButton, Toolbar, Typography, AppBar as MuiAppBar, useMediaQuery, Tooltip, CircularProgress, Button } from '@mui/material';
+import { Box, CssBaseline, useMediaQuery, CircularProgress } from '@mui/material';
 import { ThemeProvider, createTheme, useTheme } from '@mui/material/styles';
-import MenuIcon from '@mui/icons-material/Menu';
-import LogoutIcon from '@mui/icons-material/Logout'; // For logout button
 
-// Seu tema existente ou um novo
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#00695f', // Verde escuro Le Renovare
-      // light: '#338a7e',
-      // dark: '#004a42',
+      main: '#00695f', 
+      light: '#338a7e', 
+      dark: '#004a42',  
     },
     secondary: {
-      main: '#f57c00', // Laranja para contraste ou ações secundárias
+      main: '#f57c00', 
     },
     background: {
-      default: '#f4f6f8', // Um cinza claro para o fundo
-      paper: '#ffffff',
+      default: '#f4f6f8', 
+      paper: '#ffffff',    
     },
+    warning: { 
+      light: '#ffb74d', 
+      main: '#ffa726',
+      dark: '#f57c00', 
+    },
+    error: { 
+        main: '#d32f2f',
+    }
   },
   typography: {
     fontFamily: 'Roboto, sans-serif',
@@ -39,7 +43,7 @@ const theme = createTheme({
       fontWeight: 700,
     },
     button: {
-      textTransform: 'none', // Botões com texto normal
+      textTransform: 'none', 
     }
   },
   components: {
@@ -53,15 +57,15 @@ const theme = createTheme({
     MuiPaper: {
       styleOverrides: {
         root: {
-          borderRadius: 12, // Bordas mais arredondadas para Paper
+          borderRadius: 12, 
         },
       },
     },
      MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundColor: '#004d40', // Verde bem escuro para o Drawer
-          color: '#e0f2f1', // Texto claro no Drawer
+          backgroundColor: '#ffffff', 
+          borderRadius: 0, 
         }
       }
     },
@@ -75,7 +79,8 @@ const theme = createTheme({
     MuiAppBar: {
         styleOverrides: {
             colorPrimary: {
-                backgroundColor: '#004d40' // Verde bem escuro para AppBar também
+                backgroundColor: '#ffffff', 
+                color: '#000000', 
             }
         }
     }
@@ -84,16 +89,59 @@ const theme = createTheme({
 
 const DRAWER_WIDTH = 240;
 
+const getCurrentDayMonth = () => {
+  const today = new Date();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  return `${dd}-${mm}`;
+};
+
 function App() {
-  const [selectedMenu, setSelectedMenu] = useState(6); // AgendaVisual como padrão
+  const [selectedMenu, setSelectedMenu] = useState(6); 
   const [mobileOpen, setMobileOpen] = useState(false);
-  const muiTheme = useTheme(); // Para usar dentro do App, já que ThemeProvider está aqui
-  const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'));
+  const muiThemeHook = useTheme(); 
+  const isMobile = useMediaQuery(muiThemeHook.breakpoints.down('md'));
 
   const [session, setSession] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
 
-   useEffect(() => {
+  const [clients, setClients] = useState([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+
+  const fetchClientsForApp = useCallback(async () => {
+    if (!supabase || !session) return;
+    setLoadingClients(true);
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name, email, phone, birthday, notes, client_packages (id, package_id, package_name, start_date, validity_date, sessions_used, total_sessions, status, packages (id, name, total_sessions, session_duration_text))')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      setClients(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar clientes em App.js:', error.message);
+      setClients([]);
+    } finally {
+      setLoadingClients(false);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    if (session) {
+      fetchClientsForApp();
+    } else {
+      setClients([]);
+    }
+  }, [session, fetchClientsForApp]);
+
+  const aniversariantesDoDiaApp = useMemo(() => {
+    if (!clients || clients.length === 0) return [];
+    const hojeDDMM = getCurrentDayMonth();
+    return clients.filter(c => c && c.birthday === hojeDDMM);
+  }, [clients]);
+
+  useEffect(() => {
     setLoadingAuth(true);
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
@@ -103,21 +151,19 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       if (_event === 'SIGNED_IN' && newSession) {
-        setSelectedMenu(6); // Volta para AgendaVisual ao logar
+        setSelectedMenu(6); 
       }
       if (_event === 'SIGNED_OUT') {
-        // Poderia limpar outros estados da aplicação aqui se necessário
-        setSelectedMenu(6); // Reset menu on logout
+        setClients([]); 
+        setSelectedMenu(6); 
       }
-      // Se o usuário for detectado como não autenticado (ex: token expirado),
-      // a UI irá para a tela de login automaticamente devido à lógica de renderização.
-      if (!newSession && _event !== 'INITIAL_SESSION') { // INITIAL_SESSION já tratado pelo getSession
-          setLoadingAuth(false); // Garante que o loading para se a sessão se tornar nula
+      if (_event === 'INITIAL_SESSION' || _event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
+        setLoadingAuth(false);
       }
     });
 
     return () => {
-      subscription?.unsubscribe(); // Corrigido aqui
+      subscription?.unsubscribe();
     };
   }, []);
 
@@ -132,105 +178,79 @@ function App() {
   }, [isMobile, mobileOpen]);
 
   const handleLogout = async () => {
+    setLoadingAuth(true);
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error('Error logging out:', error);
-      // TODO: Show snackbar for logout error
-    }
-    // onAuthStateChange vai atualizar a 'session' para null, redirecionando para Login.
-  };
-
-  const renderContent = () => {
-    switch (selectedMenu) {
-      case 0: return <ClientManager />;
-      case 1: return <PackageManager />;
-      case 2: return <Agendamentos />;
-      case 3: return <ClienteConsultaView />;
-      case 4: return <HorariosFixos />;
-      case 5: return <ControleAtendimentosView />;
-      case 6: return <AgendaVisual />;
-      // case 7: return <Configuracoes />;
-      default: return <AgendaVisual />;
     }
   };
 
-  if (loadingAuth) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: 'background.default' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  // Envolve toda a aplicação com ThemeProvider
-  // Se não houver sessão, renderiza a tela de Login
-  if (!session) {
+  if (loadingAuth && !session) {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Login />
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: 'background.default' }}>
+          <CircularProgress />
+        </Box>
       </ThemeProvider>
     );
   }
 
-  // Se houver sessão, renderiza a aplicação principal
+  const renderMainContent = () => {
+    if (!session) {
+      return <Login />;
+    }
+    switch (selectedMenu) {
+      case 0:
+        return <ClientManager clientsProp={clients} fetchClientsProp={fetchClientsForApp} loadingClientsProp={loadingClients} />;
+      case 1:
+        return <PackageManager />;
+      case 2:
+        return <Agendamentos />;
+      case 3:
+        return <ClienteConsultaView />;
+      case 4:
+        return <HorariosFixos />;
+      case 5:
+        return <ControleAtendimentosView />;
+      case 6:
+      default:
+        return <AgendaVisual />;
+    }
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex' }}>
-        {isMobile && (
-          <MuiAppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-            <Toolbar>
-              <IconButton
-                color="inherit"
-                aria-label="open drawer"
-                edge="start"
-                onClick={handleDrawerToggle}
-                sx={{ mr: 2 }}
-              >
-                <MenuIcon />
-              </IconButton>
-              <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-                Le Renovare
-              </Typography>
-              <Tooltip title="Sair">
-                <IconButton color="inherit" onClick={handleLogout}>
-                  <LogoutIcon />
-                </IconButton>
-              </Tooltip>
-            </Toolbar>
-          </MuiAppBar>
+      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+        {session && (
+          <SideMenu
+            menu={selectedMenu}
+            setMenu={setSelectedMenu}
+            isMobile={isMobile}
+            mobileOpen={mobileOpen}
+            handleDrawerToggle={handleDrawerToggle}
+            drawerWidth={DRAWER_WIDTH}
+            onLogout={handleLogout}
+            aniversariantesCount={aniversariantesDoDiaApp.length}
+          />
         )}
-        <SideMenu
-          menu={selectedMenu}
-          setMenu={setSelectedMenu}
-          isMobile={isMobile}
-          mobileOpen={mobileOpen}
-          handleDrawerToggle={handleDrawerToggle}
-          drawerWidth={DRAWER_WIDTH}
-          onLogout={handleLogout} // Passa a função de logout para o SideMenu
-        />
         <Box
           component="main"
           sx={{
             flexGrow: 1,
-            p: { xs: 1, sm: 2, md: 3 }, // Padding responsivo
-            width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
-            ml: { md: `${DRAWER_WIDTH}px` },
-            mt: { xs: '56px', sm: '64px', md: 0 }, // Ajuste para altura do AppBar
-            bgcolor: 'background.default',
-            minHeight: '100vh'
+            p: session ? 4 : 0, // Alterado de 1 para 2 (ou o valor que preferir)
+            width: isMobile ? '100%' : undefined,
+            ml: isMobile ? 0 : undefined,
+            mt: 0, 
+            bgcolor: session ? 'background.default' : 'transparent', 
+            minHeight: '100vh', 
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
           }}
         >
-          {/* Adiciona Toolbar no desktop para consistência de espaçamento e possível título/ações */}
-          {!isMobile && (
-            <Toolbar sx={{ displayPrint: 'none' }}>
-                {/* Você pode adicionar o título da página atual aqui se desejar */}
-                {/* <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>{menuItems.find(item => item.idx === selectedMenu)?.label || "Le Renovare"}</Typography> */}
-            </Toolbar>
-          )}
-          {/* {isMobile && <Toolbar />}  // Espaçador para AppBar, já tratado pelo mt no Box principal */}
-          {renderContent()}
+          {renderMainContent()}
         </Box>
       </Box>
     </ThemeProvider>

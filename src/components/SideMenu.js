@@ -1,5 +1,5 @@
 import React from "react";
-import { Drawer, List, ListItemIcon, ListItemText, ListItemButton, Typography, Box, Divider, useTheme } from "@mui/material";
+import { Drawer, List, ListItemIcon, ListItemText, ListItemButton, Typography, Box, Divider, useTheme, Badge } from "@mui/material";
 import EventIcon from "@mui/icons-material/Event";
 import GroupIcon from "@mui/icons-material/Group";
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
@@ -7,8 +7,8 @@ import PersonSearchIcon from "@mui/icons-material/PersonSearch";
 import HistoryEduIcon from "@mui/icons-material/HistoryEdu";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import CalendarViewWeekIcon from "@mui/icons-material/CalendarViewWeek";
-// import SettingsIcon from '@mui/icons-material/Settings'; // Se você tiver Configurações
-// import logo from '../assets/logo_circulo_verde_escuro.png'; // Se você tiver um logo
+import CakeIcon from '@mui/icons-material/Cake';
+import LogoutIcon from '@mui/icons-material/Logout';
 
 const menuItems = [
   { label: "Agenda Visual", icon: <CalendarViewWeekIcon />, idx: 6 },
@@ -18,85 +18,173 @@ const menuItems = [
   { label: "Pacotes", icon: <AssignmentIndIcon />, idx: 1 },
   { label: "Consulta Cliente", icon: <PersonSearchIcon />, idx: 3 },
   { label: "Horários Fixos", icon: <AccessTimeIcon />, idx: 4 },
-  // { label: "Configurações", icon: <SettingsIcon />, idx: 7 }, // Se existir
 ];
 
-export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDrawerToggle, drawerWidth }) {
-  const muiTheme = useTheme(); // Para usar o tema aqui
+export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDrawerToggle, drawerWidth, onLogout, aniversariantesCount }) {
+  const muiTheme = useTheme();
+  const logoUrl = "https://assets.zyrosite.com/cdn-cgi/image/format=auto,w=544,fit=crop,q=95/Yanz3WRa3jIXbe26/comunicaassapso-visual-le-renovare-2-mp87zboQNzFJy8rV.png";
 
   const drawerContent = (
-    <div>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2, 
-                 backgroundColor: muiTheme.palette.primary.dark, /* Um pouco mais escuro para o header do drawer */
-                 color: 'white', height: {xs: '56px', sm: '64px'} /* Altura do Toolbar */
-                }}>
-        {/* <img src={logo} alt="Le Renovare Logo" style={{ width: 32, height: 32, marginRight: 10 }} /> */}
-        <Typography variant="h6" component="div" sx={{ fontWeight: 'bold' }}>
-          Le Renovare
-        </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Header */}
+      <Box sx={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', p: 1,
+        // backgroundColor: muiTheme.palette.primary.dark, // Removido para fundo branco
+        // color: 'white', // Removido
+        height: { xs: '56px', sm: '64px' } 
+      }}>
+        <Box
+          component="img"
+          src={logoUrl}
+          alt="Le Renovare Logo"
+          sx={{
+            height: '100%', 
+            width: 'auto',   
+            maxHeight: '50px', 
+            objectFit: 'contain', 
+          }}
+        />
       </Box>
-      <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.12)'}} />
-      <List>
-        {menuItems.sort((a,b) => a.idx - b.idx).map(item => ( // Ordena pelo idx para garantir a ordem
+      <Divider sx={{ borderColor: muiTheme.palette.divider }} /> {/* Cor do divisor ajustada */}
+
+      {/* Lista de Menu Principal */}
+      <List sx={{ flexGrow: 1, overflowY: 'auto', py: 1 }}>
+        {menuItems.sort((a, b) => a.idx - b.idx).map(item => (
           <ListItemButton
             key={item.idx}
             selected={menu === item.idx}
             onClick={() => {
               setMenu(item.idx);
-              if (isMobile) { // Fecha o drawer ao selecionar um item em mobile
+              if (isMobile) {
                 handleDrawerToggle();
               }
             }}
             sx={{
+              py: 1.5, 
               '&.Mui-selected': {
-                backgroundColor: muiTheme.palette.primary.main, // Cor de seleção
+                backgroundColor: muiTheme.palette.primary.main, // Fundo verde para selecionado
                 '&:hover': {
-                  backgroundColor: muiTheme.palette.primary.light, // Hover na seleção
+                  backgroundColor: muiTheme.palette.primary.light,
+                },
+                '& .MuiListItemIcon-root, & .MuiListItemText-primary': {
+                  color: muiTheme.palette.common.white, // Ícone e texto brancos quando selecionado
                 },
               },
               '&:hover': {
-                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                backgroundColor: muiTheme.palette.action.hover, // Hover para itens não selecionados
               },
-              color: muiTheme.palette.common.white, // Cor do texto dos itens
+              color: muiTheme.palette.text.secondary, // Cor do texto padrão dos itens (escuro)
             }}
           >
-            <ListItemIcon sx={{ color: muiTheme.palette.grey[300] /* Cor dos ícones */ }}>{item.icon}</ListItemIcon>
+            <ListItemIcon sx={{ color: 'inherit', minWidth: '40px' }}> 
+              {item.label === "Clientes" && aniversariantesCount > 0 ? (
+                <Badge
+                  badgeContent={<CakeIcon sx={{ fontSize: '0.9rem', color: muiTheme.palette.error.main }} />} 
+                  color="error" 
+                  overlap="circular"
+                  anchorOrigin={{
+                    vertical: 'top',
+                    horizontal: 'right',
+                  }}
+                  sx={{
+                    "& .MuiBadge-badge": {
+                      backgroundColor: 'white', 
+                      border: `1px solid ${muiTheme.palette.error.main}`,
+                      minWidth: '16px', height: '16px', padding: '0 2px' 
+                    }
+                  }}
+                >
+                  {item.icon}
+                </Badge>
+              ) : (
+                item.icon
+              )}
+            </ListItemIcon>
             <ListItemText primary={item.label} />
           </ListItemButton>
         ))}
       </List>
-    </div>
-  );
 
-  if (isMobile) {
-    return (
-      <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={handleDrawerToggle}
-        ModalProps={{
-          keepMounted: true, // Melhor performance de abertura em mobile.
-        }}
-        sx={{
-          display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
-        }}
-      >
-        {drawerContent}
-      </Drawer>
-    );
-  }
+      {/* Seção de Aniversariantes (na parte de baixo) */}
+      {aniversariantesCount > 0 && (
+        <>
+          <Divider sx={{ borderColor: muiTheme.palette.divider }} /> {/* Cor do divisor ajustada */}
+          <List dense sx={{ py: 0.5 }}>
+            <ListItemButton
+              onClick={() => {
+                setMenu(0); 
+                if (isMobile) {
+                  handleDrawerToggle();
+                }
+              }}
+              sx={{
+                color: muiTheme.palette.warning.dark, // Cor ajustada para fundo claro
+                '&:hover': {
+                  backgroundColor: muiTheme.palette.action.hover,
+                },
+                py: 1, 
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: '40px' }}>
+                <Badge
+                  badgeContent={aniversariantesCount}
+                  color="error"
+                  sx={{
+                    "& .MuiBadge-badge": {
+                      color: "white",
+                      backgroundColor: muiTheme.palette.error.main
+                    }
+                  }}
+                >
+                  <CakeIcon sx={{ color: muiTheme.palette.warning.dark }} /> {/* Cor do ícone ajustada */}
+                </Badge>
+              </ListItemIcon>
+              <ListItemText primary={`Aniversariantes Hoje!`} primaryTypographyProps={{ variant: 'body2' }} />
+            </ListItemButton>
+          </List>
+        </>
+      )}
+
+      {/* Botão Sair (último item) */}
+      <Divider sx={{ borderColor: muiTheme.palette.divider }} /> {/* Cor do divisor ajustada */}
+      <List dense sx={{ py: 0.5 }}>
+        <ListItemButton
+          onClick={onLogout}
+          sx={{
+            py: 1, 
+            color: muiTheme.palette.text.secondary, // Cor ajustada para fundo claro
+            '&:hover': {
+              backgroundColor: muiTheme.palette.action.hover,
+            },
+          }}
+        >
+          <ListItemIcon sx={{ color: 'inherit', minWidth: '40px' }}>
+            <LogoutIcon />
+          </ListItemIcon>
+          <ListItemText primary="Sair" />
+        </ListItemButton>
+      </List>
+    </Box>
+  );
 
   return (
     <Drawer
-      variant="permanent"
+      variant={isMobile ? "temporary" : "permanent"}
+      open={isMobile ? mobileOpen : true}
+      onClose={isMobile ? handleDrawerToggle : undefined}
+      ModalProps={{
+        keepMounted: true, 
+      }}
       sx={{
-        display: { xs: 'none', md: 'block' },
+        display: { xs: isMobile ? 'block' : 'none', md: 'block' }, 
         width: drawerWidth,
         flexShrink: 0,
-        [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
+        [`& .MuiDrawer-paper`]: { 
+            width: drawerWidth, 
+            boxSizing: 'border-box',
+            boxShadow: '4px 0px 12px rgba(0,0,0,0.15)', // Sombreado adicionado
+        },
       }}
-      open // Drawer permanente está sempre aberto em desktop
     >
       {drawerContent}
     </Drawer>
