@@ -739,7 +739,7 @@ export default function AgendaVisual() {
             </TableRow>
           </TableBody>
         </Table>
-      </Paper>
+      </Paper>  
     </Box>
   );
 }
