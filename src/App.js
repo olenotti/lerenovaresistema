@@ -11,8 +11,18 @@ import AgendaVisual from './components/AgendaVisual';
 import Login from './components/Login';
 import { supabase } from './supabaseClient';
 
-import { Box, CssBaseline, useMediaQuery, CircularProgress } from '@mui/material';
+import { 
+  Box, 
+  CssBaseline, 
+  useMediaQuery, 
+  CircularProgress,
+  AppBar,      // Adicionado
+  Toolbar,     // Adicionado
+  IconButton,  // Adicionado
+  Typography   // Adicionado
+} from '@mui/material';
 import { ThemeProvider, createTheme, useTheme } from '@mui/material/styles';
+import MenuIcon from '@mui/icons-material/Menu'; // Adicionado
 
 const theme = createTheme({
   palette: {
@@ -98,7 +108,7 @@ const getCurrentDayMonth = () => {
 
 function App() {
   const [selectedMenu, setSelectedMenu] = useState(6); 
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false); // Estado para menu mobile
   const muiThemeHook = useTheme(); 
   const isMobile = useMediaQuery(muiThemeHook.breakpoints.down('md'));
 
@@ -145,7 +155,7 @@ function App() {
     setLoadingAuth(true);
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
-      setLoadingAuth(false);
+      setLoadingAuth(false); 
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -158,7 +168,7 @@ function App() {
         setSelectedMenu(6); 
       }
       if (_event === 'INITIAL_SESSION' || _event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
-        setLoadingAuth(false);
+        setLoadingAuth(false); 
       }
     });
 
@@ -167,13 +177,13 @@ function App() {
     };
   }, []);
 
-  const handleDrawerToggle = () => {
+  const handleDrawerToggle = () => { // Função para controlar o menu mobile
     setMobileOpen(!mobileOpen);
   };
 
   useEffect(() => {
     if (!isMobile && mobileOpen) {
-      setMobileOpen(false);
+      setMobileOpen(false); // Fecha o menu se a tela for para desktop
     }
   }, [isMobile, mobileOpen]);
 
@@ -182,6 +192,7 @@ function App() {
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error('Error logging out:', error);
+      // setLoadingAuth(false) será chamado pelo listener se o logout falhar ou suceder
     }
   };
 
@@ -199,6 +210,14 @@ function App() {
   const renderMainContent = () => {
     if (!session) {
       return <Login />;
+    }
+    // Loader para conteúdo principal enquanto clientes carregam
+    if (loadingClients && session) { 
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexGrow: 1 }}>
+                <CircularProgress />
+            </Box>
+        );
     }
     switch (selectedMenu) {
       case 0:
@@ -224,24 +243,50 @@ function App() {
       <CssBaseline />
       <Box sx={{ display: 'flex', minHeight: '100vh' }}>
         {session && (
-          <SideMenu
-            menu={selectedMenu}
-            setMenu={setSelectedMenu}
-            isMobile={isMobile}
-            mobileOpen={mobileOpen}
-            handleDrawerToggle={handleDrawerToggle}
-            drawerWidth={DRAWER_WIDTH}
-            onLogout={handleLogout}
-            aniversariantesCount={aniversariantesDoDiaApp.length}
-          />
+          <>
+            {/* AppBar para mobile */}
+            {isMobile && (
+              <AppBar 
+                position="fixed" 
+                sx={{ 
+                  zIndex: (theme) => theme.zIndex.drawer + 1 
+                }}
+              >
+                <Toolbar>
+                  <IconButton
+                    color="inherit"
+                    aria-label="open drawer"
+                    edge="start"
+                    onClick={handleDrawerToggle}
+                    sx={{ mr: 2 }}
+                  >
+                    <MenuIcon />
+                  </IconButton>
+                  <Typography variant="h6" noWrap component="div">
+                    Le Renovare
+                  </Typography>
+                </Toolbar>
+              </AppBar>
+            )}
+            <SideMenu
+              menu={selectedMenu}
+              setMenu={setSelectedMenu}
+              isMobile={isMobile}
+              mobileOpen={mobileOpen} // Passa estado para SideMenu
+              handleDrawerToggle={handleDrawerToggle} // Passa função para SideMenu
+              drawerWidth={DRAWER_WIDTH}
+              onLogout={handleLogout}
+              aniversariantesCount={aniversariantesDoDiaApp.length}
+            />
+          </>
         )}
         <Box
           component="main"
           sx={{
             flexGrow: 1,
-            p: session ? 4 : 0, // Alterado de 1 para 2 (ou o valor que preferir)
-            width: isMobile ? '100%' : undefined,
-            ml: isMobile ? 0 : undefined,
+            p: session ? 4 : 0, // Mantido EXATAMENTE como no seu código original
+            width: isMobile ? '100%' : undefined, // Mantido EXATAMENTE como no seu código original
+            ml: isMobile ? 0 : undefined,      // Mantido EXATAMENTE como no seu código original
             mt: 0, 
             bgcolor: session ? 'background.default' : 'transparent', 
             minHeight: '100vh', 
@@ -250,6 +295,8 @@ function App() {
             alignItems: 'stretch',
           }}
         >
+          {/* Toolbar spacer para o AppBar fixo em mobile */}
+          {session && isMobile && <Toolbar />} 
           {renderMainContent()}
         </Box>
       </Box>
