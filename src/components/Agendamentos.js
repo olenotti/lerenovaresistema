@@ -251,9 +251,10 @@ const endOfPotentialSlot = markedTime - interval;
     const t = timeToMinutes(tRaw); 
     const tEnd = t + minDuration;
     if (
-      t >= startExpediente &&
-      tEnd <= endExpediente &&
-      !daySessions.some(s => t < (s.end + interval) && tEnd > (s.start - interval))
+      t >= startExpediente && // Horários personalizados devem começar no mínimo no início do expediente
+      // A condição tEnd <= endExpediente foi removida daqui para permitir que horários personalizados
+      // sejam válidos mesmo que terminem após o endExpediente.
+      !daySessions.some(s => t < (s.end + interval) && tEnd > (s.start - interval)) // Checa conflito com sessões existentes
     ) {
       if (!freeSlots.includes(tRaw)) { 
         freeSlots.push(tRaw);

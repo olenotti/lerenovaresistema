@@ -82,33 +82,23 @@ function getSessionsForPackage(pkgName) {
   return 1;
 }
 
-function getPackageSessionNumber(client, clientPackageId, allSystemSessions, currentSessionId) {
-  if (!clientPackageId || !client || !client.client_packages) return "";
-  
-  const clientPackage = client.client_packages.find(p => p.id === clientPackageId);
+function getPackageSessionNumber(clientPackage) {
   if (!clientPackage) return "";
 
-  const totalSessionsInPackage = clientPackage.total_sessions || getSessionsForPackage(clientPackage.name); 
+  const usedSessions = clientPackage.sessions_used || 0;
+  
+  // Prioriza total_sessions da tabela client_packages, 
+  // depois da tabela packages (definição), 
+  // e por último tenta extrair do nome do pacote.
+  const totalSessions = 
+    typeof clientPackage.total_sessions === 'number' ? clientPackage.total_sessions :
+    (clientPackage.packages && typeof clientPackage.packages.total_sessions === 'number' ? clientPackage.packages.total_sessions :
+    getSessionsForPackage(clientPackage.packages?.name) || 'N/A');
 
-  const packageSessions = allSystemSessions
-    .filter(s => s.client_package_id === clientPackageId && (s.status === "scheduled" || s.status === "done"))
-    .sort((a, b) => {
-      const dateA = `${a.session_date}T${a.session_time || '00:00:00'}`;
-      const dateB = `${b.session_date}T${b.session_time || '00:00:00'}`;
-      if (dateA !== dateB) return dateA.localeCompare(dateB);
-      return (a.id || "").localeCompare(b.id || "");
-    });
-
-  const currentIndex = packageSessions.findIndex(s => s.id === currentSessionId);
-
-  if (currentIndex === -1) {
-    const usedSessionsCount = packageSessions.length;
-    return `${usedSessionsCount}/${totalSessionsInPackage}`;
-  }
-  return `${currentIndex + 1}/${totalSessionsInPackage}`;
+  return `${usedSessions}/${totalSessions}`;
 }
 
-function sessionLineFull(sessao, clientsData, allSystemSessionsData) {
+function sessionLineFull(sessao, clientsData) {
   let timeStr = sessao.session_time || "";
   if (timeStr && timeStr.includes(':')) {
     const parts = timeStr.split(':');
@@ -119,9 +109,12 @@ function sessionLineFull(sessao, clientsData, allSystemSessionsData) {
   if (sessao.duration_period) line += ` ${sessao.duration_period}`;
   if (sessao.client_package_id) {
     const client = clientsData.find(c => c.id === sessao.client_id);
-    if (client) {
-      const sessaoNum = getPackageSessionNumber(client, sessao.client_package_id, allSystemSessionsData, sessao.id);
-      if (sessaoNum) line += ` ${sessaoNum}`;
+    if (client && client.client_packages) {
+      const currentClientPackage = client.client_packages.find(pkg => pkg.id === sessao.client_package_id);
+      if (currentClientPackage) {
+        const sessaoNum = getPackageSessionNumber(currentClientPackage); // Passa o objeto clientPackage
+        if (sessaoNum) line += ` ${sessaoNum}`;
+      }
     }
   }
   if (sessao.status === "done") line += " ✅";
@@ -647,9 +640,14 @@ export default function AgendaVisual() {
                     let pacoteLabel = "";
                     if (sessao.client_package_id) {
                       const client = clientsData.find(c => c.id === sessao.client_id);
-                      if (client) {
-                        const sessaoNum = getPackageSessionNumber(client, sessao.client_package_id, allSystemSessionsData, sessao.id);
-                        if (sessaoNum) pacoteLabel = ` ${sessaoNum}`;
+                      // Adicionar verificação para client.client_packages
+                      if (client && client.client_packages) { 
+                        const currentClientPackage = client.client_packages.find(pkg => pkg.id === sessao.client_package_id);
+                        if (currentClientPackage) {
+                          // MODIFICADO: Passa o objeto clientPackage diretamente
+                          const sessaoNum = getPackageSessionNumber(currentClientPackage); 
+                          if (sessaoNum) pacoteLabel = ` ${sessaoNum}`;
+                        }
                       }
                     }
                     return (
