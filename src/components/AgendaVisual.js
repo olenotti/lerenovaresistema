@@ -25,7 +25,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import CloseIcon from '@mui/icons-material/Close';
+// import CloseIcon from '@mui/icons-material/Close'; // Removido
 import EditCalendarIcon from '@mui/icons-material/EditCalendar';
 import { supabase } from '../supabaseClient';
 import { format as formatDateFns, parseISO as dateFnsParseISO } from 'date-fns';
@@ -406,7 +406,7 @@ export default function AgendaVisual() {
   const [loading, setLoading] = useState({
       initial: true,
       allData: true,
-      removingSlot: false,
+      // removingSlot: false, // Removido
       savingConfig: false, 
   });
   const [error, setError] = useState(null);
@@ -425,7 +425,7 @@ export default function AgendaVisual() {
 
   useEffect(() => {
     async function fetchAllData() {
-      setLoading({ initial: true, allData: true, removingSlot: false, savingConfig: false });
+      setLoading({ initial: true, allData: true, savingConfig: false }); // Removido removingSlot
       setError(null);
       let currentProfessionalId = null; // Variável local para o ID da Letícia
 
@@ -542,56 +542,7 @@ export default function AgendaVisual() {
     return obj;
   }, [weekDaysToDisplay, displayPeriod, displayableSessions, allSystemCustomSlots, allSystemBlockedSlots, loading.initial, customDayStartTimes]);
 
-  const handleRemoveFreeSlot = async (dateStr, slotTime) => {
-    if (!leticiaProfessionalId) {
-      setSnackbar({ open: true, message: "ID da profissional Letícia não encontrado. Não é possível bloquear horário.", severity: "error" });
-      return;
-    }
-    if (!window.confirm(`Tem certeza que deseja remover o horário livre ${slotTime} de ${dateStr.split('-').reverse().join('/')}? Isso irá criar um bloqueio para este horário.`)) {
-      return;
-    }
-
-    setLoading(prev => ({ ...prev, removingSlot: true }));
-    setError(null);
-
-    try {
-      const startTimeInMinutes = timeToMinutes(slotTime);
-      const durationInMinutes = getMinutesFromPeriod(displayPeriod);
-      const endTimeInMinutes = startTimeInMinutes + durationInMinutes;
-      const endTimeStr = minutesToTime(endTimeInMinutes);
-
-      const newBlock = {
-        professional_id: leticiaProfessionalId, // Usar ID da Letícia
-        block_date: dateStr,
-        start_time: slotTime,
-        end_time: endTimeStr,
-        is_full_day: false,
-        description: `Removido da Agenda Visual (Período: ${displayPeriod})`
-      };
-
-      const { data: insertedBlock, error: insertError } = await supabase
-        .from('blocked_slots')
-        .insert(newBlock)
-        .select()
-        .single();
-
-      if (insertError) {
-        if (insertError.message.includes('relation "public.blocked_slots" does not exist')) {
-            setSnackbar({ open: true, message: "Erro: Tabela de bloqueios não configurada no banco de dados.", severity: "error" });
-        } else {
-            throw insertError;
-        }
-      } else {
-        setAllSystemBlockedSlots(prevSlots => [...prevSlots, insertedBlock]);
-        setSnackbar({ open: true, message: `Horário ${slotTime} de ${dateStr.split('-').reverse().join('/')} bloqueado.`, severity: "success" });
-      }
-
-    } catch (err) {
-      setSnackbar({ open: true, message: `Erro ao bloquear horário: ${err.message}`, severity: "error" });
-    } finally {
-      setLoading(prev => ({ ...prev, removingSlot: false }));
-    }
-  };
+  // handleRemoveFreeSlot removida
 
   const handleCopyHorariosLivres = useCallback((date) => {
     const dateStr = formatDateFns(date, "yyyy-MM-dd");
@@ -798,7 +749,7 @@ export default function AgendaVisual() {
             variant="outlined"
             startIcon={<ContentCopyIcon />}
             onClick={handleCopySemanaCompleta}
-            disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}
+            disabled={isOverallLoading || loading.savingConfig}
             sx={{ borderRadius: 2, fontWeight: 500, bgcolor: "#f5f5f5", color: "#00695f", "&:hover": { bgcolor: "#e0f2f1" }, boxShadow: "none", textTransform: "none" }}
           >
             Copiar horários
@@ -811,21 +762,21 @@ export default function AgendaVisual() {
           onChange={e => setDisplayPeriod(e.target.value)}
           size="small"
           sx={{ minWidth: 120, bgcolor: "#f5f5f5", borderRadius: 2 }}
-          disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}
+          disabled={isOverallLoading || loading.savingConfig}
         >
           {PERIODOS.map(p => (
             <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
           ))}
         </Select>
-        <Button variant="contained" color="primary" size="small" onClick={goToPrevWeek} sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }} disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}>
+        <Button variant="contained" color="primary" size="small" onClick={goToPrevWeek} sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }} disabled={isOverallLoading || loading.savingConfig}>
           <AccessTimeIcon sx={{ mr: 1, fontSize: 18 }} />
           Semana anterior
         </Button>
-        <Button variant="contained" color="primary" size="small" onClick={goToNextWeek} sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }} disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}>
+        <Button variant="contained" color="primary" size="small" onClick={goToNextWeek} sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }} disabled={isOverallLoading || loading.savingConfig}>
           Próxima semana
           <AccessTimeIcon sx={{ ml: 1, fontSize: 18 }} />
         </Button>
-        {(isOverallLoading || loading.removingSlot || loading.savingConfig) && <CircularProgress size={24} sx={{ml:1}}/>}
+        {(isOverallLoading || loading.savingConfig) && <CircularProgress size={24} sx={{ml:1}}/>}
       </Box>
       <Paper sx={{ overflowX: "auto", p: { xs: 0.5, md: 2 }, borderRadius: 4, boxShadow: "0 4px 24px 0 #0001" }}>
         <Table size="small" sx={{ minWidth: 900, tableLayout: 'fixed', width: '100%' }}>
@@ -943,28 +894,7 @@ export default function AgendaVisual() {
                              <AccessTimeIcon sx={{ fontSize: "inherit", mr: 0.5, color: "#bbb" }} /> Livre
                            </span>
                         </Box>
-                        <Tooltip title={!leticiaProfessionalId ? "ID da profissional não encontrado" : "Remover este horário livre (cria um bloqueio)"}>
-                          <span> {/* Span para o Tooltip funcionar com botão desabilitado */}
-                            <IconButton
-                              size="small"
-                              onClick={() => handleRemoveFreeSlot(dateStr, horario)}
-                              disabled={isOverallLoading || loading.removingSlot || loading.savingConfig || !leticiaProfessionalId}
-                              sx={{
-                                position: 'absolute',
-                                top: 2,
-                                right: 2,
-                                p: 0.1,
-                                color: 'error.main',
-                                backgroundColor: 'rgba(255,255,255,0.7)',
-                                '&:hover': {
-                                  backgroundColor: 'rgba(255,200,200,0.9)',
-                                }
-                              }}
-                            >
-                              <CloseIcon fontSize="inherit" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
+                        {/* IconButton com CloseIcon removido daqui */}
                       </TableCell>
                     );
                   }
@@ -977,7 +907,7 @@ export default function AgendaVisual() {
                   <Tooltip title="Copiar horários livres" arrow>
                     <Button variant="text" size="small" sx={{ minWidth: 0, borderRadius: "50%", p: 1, color: "#00695f", bgcolor: "#f5f5f5", "&:hover": { bgcolor: "#e0f2f1" }, boxShadow: "none", mx: "auto", display: "flex", justifyContent: "center", alignItems: "center" }}
                       onClick={() => handleCopyHorariosLivres(date)}
-                      disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}
+                      disabled={isOverallLoading || loading.savingConfig}
                     >
                       <ContentCopyIcon sx={{ fontSize: {xs:18, md:22} }} />
                     </Button>
