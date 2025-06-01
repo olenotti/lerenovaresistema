@@ -15,13 +15,19 @@ import {
   Stack,
   CircularProgress,
   Alert,
+  IconButton,
+  Snackbar as MuiSnackbar,
+  Menu,
+  TextField
 } from "@mui/material";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import PersonIcon from "@mui/icons-material/Person";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import { supabase } from '../supabaseClient'; 
+import CloseIcon from '@mui/icons-material/Close';
+import EditCalendarIcon from '@mui/icons-material/EditCalendar';
+import { supabase } from '../supabaseClient';
 import { format as formatDateFns, parseISO as dateFnsParseISO } from 'date-fns';
 
 // --- UTILITÁRIOS ---
@@ -42,9 +48,9 @@ function pad2(n) {
 }
 function weekdayLabel(date) {
   const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const jsDay = date.getDay(); 
-  if (jsDay === 0) return ""; 
-  const idx = jsDay - 1; 
+  const jsDay = date.getDay();
+  if (jsDay === 0) return "";
+  const idx = jsDay - 1;
   return (
     `<span style="font-weight:600">${weekdays[idx]}</span><br/><span style="font-size:13px">${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}</span>`
   );
@@ -55,7 +61,8 @@ const PERIODOS = [
   { label: "1h30", value: "1h30" },
   { label: "2 horas", value: "2h" }
 ];
-const AGENDA_FREE_SLOT_INTERVAL = 15; // Minutos, para espelhar Agendamentos.js
+const AGENDA_FREE_SLOT_INTERVAL = 15;
+const DEFAULT_START_EXPEDIENTE_MINUTES = 8 * 60; // 08:00
 
 function getMinutesFromPeriod(period) {
   if (!period) return 60;
@@ -69,11 +76,11 @@ function getMinutesFromPeriod(period) {
     const m = match[2] ? parseInt(match[2], 10) : 0;
     return h * 60 + m;
   }
-  return 60; 
+  return 60;
 }
 
 function getSessionsForPackage(pkgName) {
-  if (!pkgName) return 1; 
+  if (!pkgName) return 1;
   const match = pkgName.match(/(\d+)\s*sess(ões|ao)/i);
   if (match && match[1]) return parseInt(match[1], 10);
   if (/5/.test(pkgName)) return 5;
@@ -84,17 +91,11 @@ function getSessionsForPackage(pkgName) {
 
 function getPackageSessionNumber(clientPackage) {
   if (!clientPackage) return "";
-
   const usedSessions = clientPackage.sessions_used || 0;
-  
-  // Prioriza total_sessions da tabela client_packages, 
-  // depois da tabela packages (definição), 
-  // e por último tenta extrair do nome do pacote.
-  const totalSessions = 
+  const totalSessions =
     typeof clientPackage.total_sessions === 'number' ? clientPackage.total_sessions :
     (clientPackage.packages && typeof clientPackage.packages.total_sessions === 'number' ? clientPackage.packages.total_sessions :
     getSessionsForPackage(clientPackage.packages?.name) || 'N/A');
-
   return `${usedSessions}/${totalSessions}`;
 }
 
@@ -102,9 +103,8 @@ function sessionLineFull(sessao, clientsData) {
   let timeStr = sessao.session_time || "";
   if (timeStr && timeStr.includes(':')) {
     const parts = timeStr.split(':');
-    timeStr = `${parts[0]}:${parts[1]}`; // Formato HH:mm
+    timeStr = `${parts[0]}:${parts[1]}`;
   }
-
   let line = `${timeStr} ${sessao.client_name || "Cliente?"}`;
   if (sessao.duration_period) line += ` ${sessao.duration_period}`;
   if (sessao.client_package_id) {
@@ -112,7 +112,7 @@ function sessionLineFull(sessao, clientsData) {
     if (client && client.client_packages) {
       const currentClientPackage = client.client_packages.find(pkg => pkg.id === sessao.client_package_id);
       if (currentClientPackage) {
-        const sessaoNum = getPackageSessionNumber(currentClientPackage); // Passa o objeto clientPackage
+        const sessaoNum = getPackageSessionNumber(currentClientPackage);
         if (sessaoNum) line += ` ${sessaoNum}`;
       }
     }
@@ -121,77 +121,108 @@ function sessionLineFull(sessao, clientsData) {
   return line;
 }
 
-// Lógica de horários livres adaptada de Agendamentos.js
 const calculateAvailableSlotsLikeAgendamentos = ({
-  targetDate,                     // Data alvo (string YYYY-MM-DD)
-  currentDaySessionsFromSupabase, // Sessões do Supabase para o dia (objetos originais)
-  period = "1h",                  // Período da sessão desejada (string como "1h", "30min")
-  minDurationParam,               // Duração em minutos (pode ser passada ou calculada)
-  interval = AGENDA_FREE_SLOT_INTERVAL, // Intervalo entre slots (minutos)
-  currentDayBlockedSlots,         // Bloqueios do Supabase para o dia (objetos originais)
-  currentDayCustomSlots           // Horários customizados (array de strings "HH:MM")
+  targetDate,
+  currentDaySessionsFromSupabase,
+  period = "1h",
+  minDurationParam,
+  interval = AGENDA_FREE_SLOT_INTERVAL,
+  currentDayBlockedSlots,
+  currentDayCustomSlots,
+  customStartTimeForDay
 }) => {
   if (!targetDate) return [];
-  const dateObj = dateFnsParseISO(targetDate + "T00:00:00"); // Usar date-fns para consistência
+  const dateObj = dateFnsParseISO(targetDate + "T00:00:00");
   const dow = dateObj.getDay();
-  if (dow === 0) return []; // Domingo fechado
+  if (dow === 0) return [];
+
+  if (currentDayBlockedSlots && currentDayBlockedSlots.some(b => b.block_date === targetDate && b.is_full_day)) {
+    return [];
+  }
 
   const minDuration = minDurationParam || getMinutesFromPeriod(period);
-
-  let startExpediente = 8 * 60; // 08:00 em minutos
-  if (currentDayBlockedSlots && currentDayBlockedSlots.length > 0) {
-    const endTimes = currentDayBlockedSlots.map(b => timeToMinutes(b.end_time)); // Assume que blockedSlots tem end_time
-    if (endTimes.length > 0) {
-        startExpediente = Math.max(...endTimes, startExpediente); // Garante que não comece antes das 8h e considera o fim do último bloqueio
+  
+  let startExpedienteToUse = DEFAULT_START_EXPEDIENTE_MINUTES;
+  if (customStartTimeForDay && typeof customStartTimeForDay === 'string' && customStartTimeForDay.includes(':')) {
+    const customMinutes = timeToMinutes(customStartTimeForDay);
+    if (customMinutes >= 0 && customMinutes < 24 * 60) {
+        startExpedienteToUse = customMinutes;
     }
   }
-  const endExpediente = dow === 6 ? 16 * 60 + 10 : 20 * 60 + 10; // Sábado até 16:10, outros dias até 20:10
+  
+  const endExpediente = dow === 6 ? 16 * 60 + 10 : 20 * 60 + 10;
 
-  const daySessions = currentDaySessionsFromSupabase
+  const daySessions = (currentDaySessionsFromSupabase || [])
+    .filter(s => s.session_date === targetDate && (s.status === "scheduled" || s.status === "done" || s.status === "confirmed"))
     .map(s => ({
-      id: s.id, 
-      time: s.session_time, 
+      id: `session-${s.id}`,
+      type: 'session',
+      time: s.session_time,
       period: s.duration_period,
       start: s.session_time ? timeToMinutes(s.session_time) : null,
       end: s.session_time && s.duration_period
         ? timeToMinutes(s.session_time) + getMinutesFromPeriod(s.duration_period)
         : null,
     }))
-    .filter(s => s.start !== null && s.end !== null)
-    .sort((a, b) => a.start - b.start);
+    .filter(s => s.start !== null && s.end !== null && s.end > s.start);
+
+  const partialBlockedSlots = (currentDayBlockedSlots || [])
+    .filter(b => b.block_date === targetDate && !b.is_full_day && b.start_time && b.end_time)
+    .map(b => ({
+      id: `block-${b.id}`,
+      type: 'block',
+      start: timeToMinutes(b.start_time),
+      end: timeToMinutes(b.end_time),
+    }))
+    .filter(b => b.start !== null && b.end !== null && b.end > b.start);
+
+  const ocupacoes = [...daySessions, ...partialBlockedSlots].sort((a, b) => a.start - b.start);
+
+  let startExpediente = startExpedienteToUse; 
+  if (partialBlockedSlots.length > 0) {
+      const blockEndTimes = partialBlockedSlots.map(b => b.end);
+      if (blockEndTimes.length > 0) {
+          const latestBlockEndAffectingStart = Math.max(...blockEndTimes.filter(endTime => endTime > startExpediente && endTime < startExpediente + 120), startExpediente);
+          startExpediente = latestBlockEndAffectingStart;
+      }
+  }
 
   const customSlotsRaw = [...(currentDayCustomSlots || [])].sort();
 
-  const customSlotsWithSession = customSlotsRaw.filter(slotTime => 
-    daySessions.some(s => s.time === slotTime) 
-  );
+  const validCustomSlotsForFirstMarked = customSlotsRaw.filter(slotTime => {
+    const t = timeToMinutes(slotTime);
+    const tEnd = t + minDuration;
+    return !ocupacoes.some(o => t < o.end && tEnd > o.start);
+  });
 
-  let firstMarked = null; 
-  if (customSlotsWithSession.length > 0) {
-    const customMarkedMinutes = customSlotsWithSession.map(timeToMinutes);
-    firstMarked = Math.min(...customMarkedMinutes);
-  } else if (daySessions.length > 0) {
-    firstMarked = daySessions[0].start;
+  let firstMarked = null;
+  const allMarkedStarts = [
+      ...ocupacoes.map(o => o.start),
+      ...validCustomSlotsForFirstMarked.map(timeToMinutes)
+  ].sort((a,b) => a-b);
+
+  if (allMarkedStarts.length > 0) {
+      firstMarked = allMarkedStarts[0];
   }
 
-  let freeSlots = []; 
+  let freeSlots = [];
 
-  function fillSlotsBeforeMarked(markedTime) { 
+  function fillSlotsBeforeMarked(markedTime) {
     const endOfPotentialSlot = markedTime - interval;
     let startOfPotentialSlot = endOfPotentialSlot - minDuration;
 
     while (startOfPotentialSlot >= startExpediente) {
       const currentSlotEndTime = startOfPotentialSlot + minDuration;
-      const conflictWithSession = daySessions.some(s =>
-        (startOfPotentialSlot < s.end && currentSlotEndTime > s.start)
+      const conflictWithOcupacao = ocupacoes.some(o =>
+        (startOfPotentialSlot < o.end && currentSlotEndTime > o.start)
       );
       const overlapWithExistingFreeSlot = freeSlots.some(freeTime => {
         const freeStart = timeToMinutes(freeTime);
-        const freeEnd = freeStart + minDuration; 
+        const freeEnd = freeStart + minDuration;
         return (startOfPotentialSlot < freeEnd && currentSlotEndTime > freeStart);
       });
 
-      if (!conflictWithSession && !overlapWithExistingFreeSlot) {
+      if (!conflictWithOcupacao && !overlapWithExistingFreeSlot) {
         freeSlots.push(minutesToTime(startOfPotentialSlot));
       }
       const endOfNextEarlierSlot = startOfPotentialSlot - interval;
@@ -199,73 +230,71 @@ const calculateAvailableSlotsLikeAgendamentos = ({
     }
   }
 
-  function fillSlotsInInterval(windowStart, windowEnd) { 
-    let slot = windowStart;
-    while (slot + minDuration <= windowEnd) {
-      const slotEnd = slot + minDuration;
-      const conflict = daySessions.some(s => (slot < s.end && slotEnd > s.start));
+  function fillSlotsInInterval(windowStart, windowEnd) {
+    let currentSlotStart = Math.max(windowStart, startExpediente);
+
+    while (currentSlotStart + minDuration <= windowEnd) {
+      const currentSlotEnd = currentSlotStart + minDuration;
+      const conflict = ocupacoes.some(o => (currentSlotStart < o.end && currentSlotEnd > o.start));
+      
       if (!conflict) {
-        freeSlots.push(minutesToTime(slot));
+        freeSlots.push(minutesToTime(currentSlotStart));
       }
-      slot += (minDuration + interval); 
+      currentSlotStart += (minDuration + interval);
     }
   }
 
   if (firstMarked !== null && firstMarked > startExpediente) {
     fillSlotsBeforeMarked(firstMarked);
-    let lastProcessedEndTime = firstMarked; 
-    const firstMarkedIsSession = daySessions.find(s => s.start === firstMarked);
-    if (firstMarkedIsSession) {
-        lastProcessedEndTime = firstMarkedIsSession.end;
-    } else { 
-        const sessionAtFirstMarked = daySessions.find(s => s.start === firstMarked);
-        if (sessionAtFirstMarked) {
-           lastProcessedEndTime = sessionAtFirstMarked.end;
-        } else {
-          lastProcessedEndTime = firstMarked + minDuration;
-        }
+    let lastProcessedEndTime = firstMarked;
+
+    const firstMarkedIsOcupacao = ocupacoes.find(o => o.start === firstMarked);
+    if (firstMarkedIsOcupacao) {
+        lastProcessedEndTime = firstMarkedIsOcupacao.end;
+    } else {
+        lastProcessedEndTime = firstMarked + minDuration;
     }
 
-    const sessionsStrictlyAfterFirstMarked = daySessions.filter(s => s.start >= lastProcessedEndTime).sort((a,b)=>a.start-b.start);
-    for (let i = 0; i < sessionsStrictlyAfterFirstMarked.length; i++) {
-        const currentSession = sessionsStrictlyAfterFirstMarked[i];
-        if (currentSession.start >= lastProcessedEndTime + interval) { 
-            fillSlotsInInterval(lastProcessedEndTime + interval, currentSession.start - interval);
+    const ocupacoesStrictlyAfterFirstMarked = ocupacoes.filter(o => o.start >= lastProcessedEndTime).sort((a,b)=>a.start-b.start);
+    for (let i = 0; i < ocupacoesStrictlyAfterFirstMarked.length; i++) {
+        const currentOcupacao = ocupacoesStrictlyAfterFirstMarked[i];
+        if (currentOcupacao.start >= lastProcessedEndTime + interval) {
+            fillSlotsInInterval(lastProcessedEndTime + interval, currentOcupacao.start - interval);
         }
-        lastProcessedEndTime = Math.max(lastProcessedEndTime, currentSession.end);
+        lastProcessedEndTime = Math.max(lastProcessedEndTime, currentOcupacao.end);
     }
     if (lastProcessedEndTime < endExpediente) {
         fillSlotsInInterval(lastProcessedEndTime + interval, endExpediente);
     }
-  } else {
-    if (daySessions.length === 0) {
+  } else { 
+    if (ocupacoes.length === 0) {
       fillSlotsInInterval(startExpediente, endExpediente);
     } else {
-      if (daySessions[0].start >= startExpediente + interval) {
-        fillSlotsInInterval(startExpediente, daySessions[0].start - interval);
+      if (ocupacoes[0].start >= startExpediente + interval) { 
+        fillSlotsInInterval(startExpediente, ocupacoes[0].start - interval);
       }
-      for (let i = 0; i < daySessions.length - 1; i++) {
-        const endCurr = daySessions[i].end;
-        const startNext = daySessions[i + 1].start;
-        if (startNext >= endCurr + interval) { 
+      for (let i = 0; i < ocupacoes.length - 1; i++) {
+        const endCurr = ocupacoes[i].end;
+        const startNext = ocupacoes[i + 1].start;
+        if (startNext >= endCurr + interval) {
             fillSlotsInInterval(endCurr + interval, startNext - interval);
         }
       }
-      if (daySessions[daySessions.length - 1].end < endExpediente) {
-        fillSlotsInInterval(daySessions[daySessions.length - 1].end + interval, endExpediente);
+      if (ocupacoes[ocupacoes.length - 1].end < endExpediente) {
+        fillSlotsInInterval(ocupacoes[ocupacoes.length - 1].end + interval, endExpediente);
       }
     }
   }
 
-  for (const tRaw of customSlotsRaw) { 
-    const t = timeToMinutes(tRaw); 
+  for (const tRaw of customSlotsRaw) {
+    const t = timeToMinutes(tRaw);
     const tEnd = t + minDuration;
     if (
-      t >= startExpediente &&
+      t >= startExpediente && 
       tEnd <= endExpediente &&
-      !daySessions.some(s => t < (s.end + interval) && tEnd > (s.start - interval))
+      !ocupacoes.some(o => t < (o.end + interval) && tEnd > (o.start - interval)) 
     ) {
-      if (!freeSlots.includes(tRaw)) { 
+      if (!freeSlots.includes(tRaw)) {
         freeSlots.push(tRaw);
       }
     }
@@ -276,39 +305,41 @@ const calculateAvailableSlotsLikeAgendamentos = ({
 };
 
 
-function getWeekDates(startDate) { 
+function getWeekDates(startDate) {
   const week = [];
-  for (let i = 0; i < 6; i++) { 
+  for (let i = 0; i < 6; i++) {
     const day = new Date(startDate);
     day.setDate(startDate.getDate() + i);
     week.push(day);
   }
   return week;
 }
-function getWeekStart(dateObj) { 
+function getWeekStart(dateObj) {
   const d = new Date(dateObj);
   const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day; 
+  const diff = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
 function buildWeekMarkedAndFreeCombined({
-  allDisplayableSessions, 
+  allDisplayableSessions,
   clientsData,
-  weekStartDate, 
-  allSystemSessionsData, 
-  allSystemCustomSlots, 
-  allSystemBlockedSlots 
+  weekStartDate,
+  allSystemSessionsData,
+  allSystemCustomSlots,
+  allSystemBlockedSlots,
+  customDayStartTimes
 }) {
-  const weekDates = getWeekDates(weekStartDate); 
+  const weekDates = getWeekDates(weekStartDate);
   let msg = "Horários da semana:\n\n";
   const requestedPeriodForCopy = "1h";
 
   for (const date of weekDates) {
     const dateStr = formatDateFns(date, "yyyy-MM-dd");
-    
+    const currentCustomStartTime = customDayStartTimes[dateStr];
+
     const daySessionsOriginalData = allDisplayableSessions
       .filter(s => s.session_date === dateStr && s.session_time)
       .sort((a, b) => timeToMinutes(a.session_time) - timeToMinutes(b.session_time));
@@ -321,16 +352,17 @@ function buildWeekMarkedAndFreeCombined({
 
     const livres = calculateAvailableSlotsLikeAgendamentos({
       targetDate: dateStr,
-      currentDaySessionsFromSupabase: daySessionsOriginalData, 
-      period: requestedPeriodForCopy, 
+      currentDaySessionsFromSupabase: daySessionsOriginalData,
+      period: requestedPeriodForCopy,
       minDurationParam: getMinutesFromPeriod(requestedPeriodForCopy),
       interval: AGENDA_FREE_SLOT_INTERVAL,
       currentDayCustomSlots: customSlotsOnDate,
       currentDayBlockedSlots: blockedSlotsOnDate,
+      customStartTimeForDay: currentCustomStartTime,
     });
 
     let allTimes = [];
-    daySessionsOriginalData.forEach(s => { // Use original data for marked sessions
+    daySessionsOriginalData.forEach(s => {
       allTimes.push({ time: s.session_time, type: "marcado", sessao: s });
     });
     livres.forEach(h => {
@@ -338,22 +370,22 @@ function buildWeekMarkedAndFreeCombined({
         allTimes.push({ time: h, type: "livre" });
       }
     });
-    
-    allTimes = Array.from(new Set(allTimes.map(item => JSON.stringify(item)))).map(str => JSON.parse(str)); 
+
+    allTimes = Array.from(new Set(allTimes.map(item => JSON.stringify(item)))).map(str => JSON.parse(str));
     allTimes.sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
 
     if (allTimes.length === 0) continue;
 
     const weekdays = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
     const jsDay = date.getDay();
-    if (jsDay === 0) continue; 
-    const weekLabel = weekdays[jsDay - 1]; 
+    if (jsDay === 0) continue;
+    const weekLabel = weekdays[jsDay - 1];
     msg += `${weekLabel} (${pad2(date.getDate())}/${pad2(date.getMonth() + 1)})\n`;
     for (const item of allTimes) {
       if (item.type === "marcado") {
         msg += sessionLineFull(item.sessao, clientsData, allSystemSessionsData) + "\n";
       } else {
-        msg += `${item.time}\n`; 
+        msg += `${item.time}\n`;
       }
     }
     msg += "\n";
@@ -367,152 +399,234 @@ export default function AgendaVisual() {
 
   const [clientsData, setClientsData] = useState([]);
   const [allSystemSessionsData, setAllSystemSessionsData] = useState([]);
-  const [allSystemCustomSlots, setAllSystemCustomSlots] = useState([]); 
-  const [allSystemBlockedSlots, setAllSystemBlockedSlots] = useState([]); 
+  const [allSystemCustomSlots, setAllSystemCustomSlots] = useState([]);
+  const [allSystemBlockedSlots, setAllSystemBlockedSlots] = useState([]);
+  const [professionals, setProfessionals] = useState([]); // Ainda carrega para obter o ID
 
   const [loading, setLoading] = useState({
-      initial: true, 
-      allData: true, 
+      initial: true,
+      allData: true,
+      removingSlot: false,
+      savingConfig: false, 
   });
   const [error, setError] = useState(null);
-  
+  const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "info" });
+
+  const [customDayStartTimes, setCustomDayStartTimes] = useState({});
+  const [anchorElMenu, setAnchorElMenu] = useState(null);
+  const [selectedDateForMenu, setSelectedDateForMenu] = useState(null);
+  const [tempStartTime, setTempStartTime] = useState("");
+
+  // Este ID será usado para todas as operações de customDayStartTimes
+  const leticiaProfessionalId = useMemo(() => {
+    const leticia = professionals.find(p => p.name?.toLowerCase().includes('letícia'));
+    return leticia ? leticia.id : null;
+  }, [professionals]);
+
   useEffect(() => {
     async function fetchAllData() {
-      console.log("useEffect: Iniciando fetchAllData");
-      setLoading({ initial: true, allData: true });
+      setLoading({ initial: true, allData: true, removingSlot: false, savingConfig: false });
       setError(null);
+      let currentProfessionalId = null; // Variável local para o ID da Letícia
+
       try {
         const { data: clients, error: clientsError } = await supabase
           .from("clients")
-          .select("*, client_packages(*, packages(id, name, total_sessions))"); 
+          .select("*, client_packages(*, packages(id, name, total_sessions))");
         if (clientsError) throw new Error("Clientes: " + clientsError.message);
         setClientsData(clients || []);
-        console.log("useEffect: Clientes carregados:", clients);
 
         const { data: sessions, error: sessionsError } = await supabase
           .from("sessions")
-          .select("*"); 
+          .select("*");
         if (sessionsError) throw new Error("Sessões Sistema: " + sessionsError.message);
-        // Mantido o processamento de professional_name aqui caso seja usado em outro lugar não visual
         const processedSessions = (sessions || []).map(s => ({
             ...s,
             professional_name: s.professional_name || (s.professional_id ? `Prof ${s.professional_id}` : 'N/D')
         }));
         setAllSystemSessionsData(processedSessions);
-        console.log("useEffect: Sessões carregadas e processadas (allSystemSessionsData):", processedSessions);
 
         const { data: customSlots, error: customSlotsError } = await supabase
           .from("custom_slots")
           .select("*");
         if (customSlotsError) throw new Error("Custom Slots: " + customSlotsError.message);
         setAllSystemCustomSlots(customSlots || []);
-        console.log("useEffect: Custom Slots carregados:", customSlots);
-        
+
         const { data: blockedSlots, error: blockedSlotsError } = await supabase
           .from("blocked_slots")
           .select("*");
-        if (blockedSlotsError) throw new Error("Blocked Slots: " + blockedSlotsError.message);
-        setAllSystemBlockedSlots(blockedSlots || []);
-        console.log("useEffect: Blocked Slots carregados:", blockedSlots);
+        if (blockedSlotsError && blockedSlotsError.message.includes('relation "public.blocked_slots" does not exist')) {
+            console.warn("Tabela 'blocked_slots' não encontrada. Funcionalidade de bloqueio pode ser limitada.");
+            setAllSystemBlockedSlots([]);
+        } else if (blockedSlotsError) {
+            throw new Error("Blocked Slots: " + blockedSlotsError.message);
+        } else {
+            setAllSystemBlockedSlots(blockedSlots || []);
+        }
+
+        const { data: profsData, error: profsError } = await supabase
+          .from('professionals')
+          .select('id, name');
+        if (profsError) throw new Error("Profissionais: " + profsError.message);
+        setProfessionals(profsData || []); // Atualiza o estado de professionals
+        
+        const leticia = (profsData || []).find(p => p.name?.toLowerCase().includes('letícia'));
+        currentProfessionalId = leticia ? leticia.id : null;
+
+        if (currentProfessionalId) {
+          const { data: dayConfigs, error: dayConfigsError } = await supabase
+            .from('professional_day_configs')
+            .select('config_date, custom_start_time')
+            .eq('professional_id', currentProfessionalId);
+
+          if (dayConfigsError) throw new Error("Configurações de Dia: " + dayConfigsError.message);
+          
+          const configsMap = {};
+          (dayConfigs || []).forEach(config => {
+            if (config.custom_start_time) { 
+              configsMap[config.config_date] = config.custom_start_time.substring(0, 5); 
+            }
+          });
+          setCustomDayStartTimes(configsMap);
+        } else {
+            console.warn("ID da profissional Letícia não encontrado. Não foi possível carregar configurações de início de expediente.");
+            // Opcional: Notificar o usuário se o ID não for encontrado
+            // setSnackbar({ open: true, message: "ID da profissional Letícia não encontrado para carregar configurações.", severity: "warning" });
+        }
 
       } catch (err) {
-        console.error("useEffect: Erro ao buscar dados:", err);
+        console.error("Erro ao carregar todos os dados:", err);
         setError("Erro ao carregar dados: " + err.message);
+        setSnackbar({ open: true, message: "Erro ao carregar dados: " + err.message, severity: "error" });
       }
-      setLoading({ initial: false, allData: false });
-      console.log("useEffect: fetchAllData concluído, loading set to false.");
+      setLoading(prev => ({ ...prev, initial: false, allData: false }));
     }
     fetchAllData();
-  }, []); 
+  }, []); // Removido leticiaProfessionalId da dependência, pois é obtido dentro do efeito.
 
   const displayableSessions = useMemo(() => {
-    const filtered = allSystemSessionsData.filter(s => 
+    return allSystemSessionsData.filter(s =>
       s.status === "scheduled" || s.status === "done" || s.status === "confirmed"
     );
-    console.log("useMemo displayableSessions:", filtered, "from allSystemSessionsData:", allSystemSessionsData);
-    return filtered;
   }, [allSystemSessionsData]);
 
   const weekDaysToDisplay = useMemo(() => getWeekDates(currentWeekStartDate), [currentWeekStartDate]);
 
   const allTimesByDay = useMemo(() => {
-    if (loading.initial) {
-        console.log("useMemo allTimesByDay: loading.initial é true. Retornando {}.");
-        return {};
-    }
-    console.log("useMemo allTimesByDay: Calculando horários. displayableSessions:", displayableSessions.length);
-
+    if (loading.initial) return {};
     const obj = {};
-
     weekDaysToDisplay.forEach(date => {
       const dateStr = formatDateFns(date, "yyyy-MM-dd");
-      
       const sessionsOnDateOriginalData = displayableSessions.filter(s => s.session_date === dateStr && s.session_time);
-      
-      const customSlotsOnDate = (allSystemCustomSlots || [])
-        .filter(cs => cs.slot_date === dateStr)
-        .map(cs => cs.slot_time); 
-      const blockedSlotsOnDate = (allSystemBlockedSlots || [])
-        .filter(bs => bs.block_date === dateStr);
+      const customSlotsOnDate = (allSystemCustomSlots || []).filter(cs => cs.slot_date === dateStr).map(cs => cs.slot_time);
+      const blockedSlotsOnDate = (allSystemBlockedSlots || []).filter(bs => bs.block_date === dateStr);
+      const currentCustomStartTime = customDayStartTimes[dateStr];
 
       const livres = calculateAvailableSlotsLikeAgendamentos({
         targetDate: dateStr,
-        currentDaySessionsFromSupabase: sessionsOnDateOriginalData, 
-        period: displayPeriod, 
+        currentDaySessionsFromSupabase: sessionsOnDateOriginalData,
+        period: displayPeriod,
         minDurationParam: getMinutesFromPeriod(displayPeriod),
-        interval: AGENDA_FREE_SLOT_INTERVAL, 
-        currentDayCustomSlots: customSlotsOnDate, 
-        currentDayBlockedSlots: blockedSlotsOnDate, 
+        interval: AGENDA_FREE_SLOT_INTERVAL,
+        currentDayCustomSlots: customSlotsOnDate,
+        currentDayBlockedSlots: blockedSlotsOnDate,
+        customStartTimeForDay: currentCustomStartTime,
       });
 
-      const daySessionsWithTime = sessionsOnDateOriginalData 
-        .sort((a, b) => timeToMinutes(a.session_time) - timeToMinutes(b.session_time));
-      
+      const daySessionsWithTime = sessionsOnDateOriginalData.sort((a, b) => timeToMinutes(a.session_time) - timeToMinutes(b.session_time));
       let combinedTimes = new Set();
       livres.forEach(t => combinedTimes.add(t));
       daySessionsWithTime.forEach(s => combinedTimes.add(s.session_time));
-      
       obj[dateStr] = Array.from(combinedTimes).sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
     });
-    console.log("useMemo allTimesByDay: Horários calculados:", obj);
     return obj;
-  }, [
-      weekDaysToDisplay, 
-      displayPeriod, 
-      displayableSessions, 
-      allSystemCustomSlots, 
-      allSystemBlockedSlots, 
-      loading.initial
-    ]);
+  }, [weekDaysToDisplay, displayPeriod, displayableSessions, allSystemCustomSlots, allSystemBlockedSlots, loading.initial, customDayStartTimes]);
+
+  const handleRemoveFreeSlot = async (dateStr, slotTime) => {
+    if (!leticiaProfessionalId) {
+      setSnackbar({ open: true, message: "ID da profissional Letícia não encontrado. Não é possível bloquear horário.", severity: "error" });
+      return;
+    }
+    if (!window.confirm(`Tem certeza que deseja remover o horário livre ${slotTime} de ${dateStr.split('-').reverse().join('/')}? Isso irá criar um bloqueio para este horário.`)) {
+      return;
+    }
+
+    setLoading(prev => ({ ...prev, removingSlot: true }));
+    setError(null);
+
+    try {
+      const startTimeInMinutes = timeToMinutes(slotTime);
+      const durationInMinutes = getMinutesFromPeriod(displayPeriod);
+      const endTimeInMinutes = startTimeInMinutes + durationInMinutes;
+      const endTimeStr = minutesToTime(endTimeInMinutes);
+
+      const newBlock = {
+        professional_id: leticiaProfessionalId, // Usar ID da Letícia
+        block_date: dateStr,
+        start_time: slotTime,
+        end_time: endTimeStr,
+        is_full_day: false,
+        description: `Removido da Agenda Visual (Período: ${displayPeriod})`
+      };
+
+      const { data: insertedBlock, error: insertError } = await supabase
+        .from('blocked_slots')
+        .insert(newBlock)
+        .select()
+        .single();
+
+      if (insertError) {
+        if (insertError.message.includes('relation "public.blocked_slots" does not exist')) {
+            setSnackbar({ open: true, message: "Erro: Tabela de bloqueios não configurada no banco de dados.", severity: "error" });
+        } else {
+            throw insertError;
+        }
+      } else {
+        setAllSystemBlockedSlots(prevSlots => [...prevSlots, insertedBlock]);
+        setSnackbar({ open: true, message: `Horário ${slotTime} de ${dateStr.split('-').reverse().join('/')} bloqueado.`, severity: "success" });
+      }
+
+    } catch (err) {
+      setSnackbar({ open: true, message: `Erro ao bloquear horário: ${err.message}`, severity: "error" });
+    } finally {
+      setLoading(prev => ({ ...prev, removingSlot: false }));
+    }
+  };
 
   const handleCopyHorariosLivres = useCallback((date) => {
     const dateStr = formatDateFns(date, "yyyy-MM-dd");
     const sessionsOnDateOriginalData = displayableSessions.filter(s => s.session_date === dateStr && s.session_time);
-    const customSlotsOnDate = (allSystemCustomSlots || [])
-        .filter(cs => cs.slot_date === dateStr)
-        .map(cs => cs.slot_time);
-    const blockedSlotsOnDate = (allSystemBlockedSlots || [])
-        .filter(bs => bs.block_date === dateStr);
-    
+    const customSlotsOnDate = (allSystemCustomSlots || []).filter(cs => cs.slot_date === dateStr).map(cs => cs.slot_time);
+    const blockedSlotsOnDate = (allSystemBlockedSlots || []).filter(bs => bs.block_date === dateStr);
+    const currentCustomStartTime = customDayStartTimes[dateStr];
+
     const livres = calculateAvailableSlotsLikeAgendamentos({
       targetDate: dateStr,
       currentDaySessionsFromSupabase: sessionsOnDateOriginalData,
-      period: displayPeriod, 
+      period: displayPeriod,
       minDurationParam: getMinutesFromPeriod(displayPeriod),
       interval: AGENDA_FREE_SLOT_INTERVAL,
       currentDayCustomSlots: customSlotsOnDate,
       currentDayBlockedSlots: blockedSlotsOnDate,
+      customStartTimeForDay: currentCustomStartTime,
     });
 
-    if (livres.length === 0) return;
+    if (livres.length === 0) {
+      setSnackbar({ open: true, message: "Nenhum horário livre para copiar.", severity: "info" });
+      return;
+    }
     const weekdays = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
     const jsDay = date.getDay();
     if (jsDay === 0) return;
     const weekLabel = weekdays[jsDay - 1];
     const header = `${weekLabel} (${pad2(date.getDate())}/${pad2(date.getMonth() + 1)})`;
     const text = [header, ...livres].join("\n");
-    navigator.clipboard.writeText(text);
-  }, [displayableSessions, allSystemCustomSlots, allSystemBlockedSlots, displayPeriod]);
+    navigator.clipboard.writeText(text).then(() => {
+      setSnackbar({ open: true, message: "Horários livres copiados!", severity: "success" });
+    }).catch(() => {
+      setSnackbar({ open: true, message: "Falha ao copiar horários.", severity: "error" });
+    });
+  }, [displayableSessions, allSystemCustomSlots, allSystemBlockedSlots, displayPeriod, customDayStartTimes]);
 
   const handleCopySemanaCompleta = useCallback(() => {
     if (loading.allData) return;
@@ -520,43 +634,160 @@ export default function AgendaVisual() {
       allDisplayableSessions: displayableSessions,
       clientsData,
       weekStartDate: currentWeekStartDate,
-      allSystemSessionsData, 
+      allSystemSessionsData,
       allSystemCustomSlots,
-      allSystemBlockedSlots
+      allSystemBlockedSlots,
+      customDayStartTimes
     });
-    navigator.clipboard.writeText(msg);
-  }, [displayableSessions, clientsData, currentWeekStartDate, allSystemSessionsData, allSystemCustomSlots, allSystemBlockedSlots, loading.allData]);
+    if (!msg) {
+        setSnackbar({ open: true, message: "Nenhum horário para copiar na semana.", severity: "info" });
+        return;
+    }
+    navigator.clipboard.writeText(msg).then(() => {
+      setSnackbar({ open: true, message: "Horários da semana copiados!", severity: "success" });
+    }).catch(() => {
+      setSnackbar({ open: true, message: "Falha ao copiar horários da semana.", severity: "error" });
+    });
+  }, [displayableSessions, clientsData, currentWeekStartDate, allSystemSessionsData, allSystemCustomSlots, allSystemBlockedSlots, loading.allData, customDayStartTimes]);
 
-  const goToPrevWeek = useCallback(() => {
-    setCurrentWeekStartDate(prev => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() - 7);
-      return d;
-    });
-  }, []);
-  const goToNextWeek = useCallback(() => {
-    setCurrentWeekStartDate(prev => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() + 7);
-      return d;
-    });
-  }, []);
+  const goToPrevWeek = useCallback(() => setCurrentWeekStartDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 7); return d; }), []);
+  const goToNextWeek = useCallback(() => setCurrentWeekStartDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 7); return d; }), []);
+
+  const handleOpenDayMenu = (event, dateStr) => {
+    if (!leticiaProfessionalId) {
+        setSnackbar({ open: true, message: "ID da profissional Letícia não encontrado. Não é possível ajustar horários.", severity: "warning" });
+        return;
+    }
+    setAnchorElMenu(event.currentTarget);
+    setSelectedDateForMenu(dateStr);
+    setTempStartTime(customDayStartTimes[dateStr] || "");
+  };
+
+  const handleCloseDayMenu = () => {
+    setAnchorElMenu(null);
+    setSelectedDateForMenu(null);
+    setTempStartTime("");
+  };
+
+  const handleSaveCustomStartTime = async () => {
+    if (!selectedDateForMenu) {
+      setSnackbar({ open: true, message: "Erro: Nenhuma data selecionada.", severity: "error" });
+      return;
+    }
+    if (!leticiaProfessionalId) {
+      setSnackbar({ open: true, message: "ID da profissional Letícia não encontrado. Não é possível salvar.", severity: "error" });
+      handleCloseDayMenu();
+      return;
+    }
+
+    if (tempStartTime && !tempStartTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/)) {
+      setSnackbar({ open: true, message: "Formato de hora inválido. Use HH:MM (ex: 09:00).", severity: "error" });
+      return;
+    }
+
+    setLoading(prev => ({ ...prev, savingConfig: true }));
+    setError(null);
+
+    try {
+      if (tempStartTime) {
+        const { error: upsertError } = await supabase
+          .from('professional_day_configs')
+          .upsert({ 
+            professional_id: leticiaProfessionalId, 
+            config_date: selectedDateForMenu, 
+            custom_start_time: tempStartTime 
+          }, { onConflict: 'professional_id, config_date' });
+
+        if (upsertError) throw upsertError;
+
+        setCustomDayStartTimes(prev => ({
+          ...prev,
+          [selectedDateForMenu]: tempStartTime
+        }));
+        setSnackbar({ open: true, message: `Horário de início para ${selectedDateForMenu.split('-').reverse().join('/')} definido para ${tempStartTime}.`, severity: "success" });
+
+      } else { // Resetar (tempStartTime está vazio)
+        const { error: deleteError } = await supabase
+          .from('professional_day_configs')
+          .delete()
+          .match({ professional_id: leticiaProfessionalId, config_date: selectedDateForMenu });
+
+        if (deleteError) throw deleteError;
+
+        setCustomDayStartTimes(prev => {
+          const newTimes = { ...prev };
+          delete newTimes[selectedDateForMenu];
+          return newTimes;
+        });
+        setSnackbar({ open: true, message: `Horário de início para ${selectedDateForMenu.split('-').reverse().join('/')} resetado para o padrão.`, severity: "info" });
+      }
+    } catch (err) {
+      console.error("Erro ao salvar configuração do dia:", err);
+      setSnackbar({ open: true, message: `Erro ao salvar configuração: ${err.message}`, severity: "error" });
+    } finally {
+      setLoading(prev => ({ ...prev, savingConfig: false }));
+      handleCloseDayMenu();
+    }
+  };
   
-  const isOverallLoading = loading.allData;
+  const handleResetCustomStartTime = async () => {
+    if (!selectedDateForMenu) {
+      setSnackbar({ open: true, message: "Erro: Nenhuma data selecionada.", severity: "error" });
+      return;
+    }
+     if (!leticiaProfessionalId) {
+      setSnackbar({ open: true, message: "ID da profissional Letícia não encontrado. Não é possível resetar.", severity: "error" });
+      handleCloseDayMenu();
+      return;
+    }
+
+    setLoading(prev => ({ ...prev, savingConfig: true }));
+    setError(null);
+
+    try {
+      const { error: deleteError } = await supabase
+        .from('professional_day_configs')
+        .delete()
+        .match({ professional_id: leticiaProfessionalId, config_date: selectedDateForMenu });
+
+      if (deleteError) throw deleteError;
+
+      setCustomDayStartTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[selectedDateForMenu];
+        return newTimes;
+      });
+      setSnackbar({ open: true, message: `Horário de início para ${selectedDateForMenu.split('-').reverse().join('/')} resetado para o padrão.`, severity: "info" });
+
+    } catch (err) {
+      console.error("Erro ao resetar configuração do dia:", err);
+      setSnackbar({ open: true, message: `Erro ao resetar configuração: ${err.message}`, severity: "error" });
+    } finally {
+      setLoading(prev => ({ ...prev, savingConfig: false }));
+      handleCloseDayMenu();
+    }
+  };
+
+  const isOverallLoading = loading.allData || loading.initial;
   const showFullScreenLoader = loading.initial && !error;
 
-
-  if (showFullScreenLoader) { 
-     console.log("Render: Exibindo loader de tela cheia.");
+  if (showFullScreenLoader) {
      return <Box sx={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh'}}><CircularProgress size={60} /></Box>;
   }
-  console.log("Render: Renderizando agenda. Loading.initial:", loading.initial, "Loading.allData:", loading.allData, "Error:", error);
-  console.log("Render: displayableSessions count:", displayableSessions.length);
-
 
   return (
     <Box sx={{ p: { xs: 1, md: 3 } }}>
       {error && <Alert severity="error" sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>{error}</Alert>}
+      <MuiSnackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackbar(prev => ({ ...prev, open: false }))} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </MuiSnackbar>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1, flexWrap: "wrap", gap:1 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: 1 }}>
           <EventAvailableIcon sx={{ mr: 1, mb: "-4px", color: "#00695f" }} />
@@ -567,7 +798,7 @@ export default function AgendaVisual() {
             variant="outlined"
             startIcon={<ContentCopyIcon />}
             onClick={handleCopySemanaCompleta}
-            disabled={isOverallLoading || displayableSessions.length === 0 && (allSystemCustomSlots || []).length === 0}
+            disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}
             sx={{ borderRadius: 2, fontWeight: 500, bgcolor: "#f5f5f5", color: "#00695f", "&:hover": { bgcolor: "#e0f2f1" }, boxShadow: "none", textTransform: "none" }}
           >
             Copiar horários
@@ -580,43 +811,62 @@ export default function AgendaVisual() {
           onChange={e => setDisplayPeriod(e.target.value)}
           size="small"
           sx={{ minWidth: 120, bgcolor: "#f5f5f5", borderRadius: 2 }}
-          disabled={isOverallLoading}
+          disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}
         >
           {PERIODOS.map(p => (
             <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
           ))}
         </Select>
-        <Button variant="contained" color="primary" size="small" onClick={goToPrevWeek} sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }} disabled={isOverallLoading}>
+        <Button variant="contained" color="primary" size="small" onClick={goToPrevWeek} sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }} disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}>
           <AccessTimeIcon sx={{ mr: 1, fontSize: 18 }} />
           Semana anterior
         </Button>
-        <Button variant="contained" color="primary" size="small" onClick={goToNextWeek} sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }} disabled={isOverallLoading}>
+        <Button variant="contained" color="primary" size="small" onClick={goToNextWeek} sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }} disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}>
           Próxima semana
           <AccessTimeIcon sx={{ ml: 1, fontSize: 18 }} />
         </Button>
-        {isOverallLoading && <CircularProgress size={24} sx={{ml:1}}/>}
+        {(isOverallLoading || loading.removingSlot || loading.savingConfig) && <CircularProgress size={24} sx={{ml:1}}/>}
       </Box>
       <Paper sx={{ overflowX: "auto", p: { xs: 0.5, md: 2 }, borderRadius: 4, boxShadow: "0 4px 24px 0 #0001" }}>
         <Table size="small" sx={{ minWidth: 900, tableLayout: 'fixed', width: '100%' }}>
           <TableHead>
             <TableRow>
-              {weekDaysToDisplay.map(date => (
+              {weekDaysToDisplay.map(date => {
+                const dateStr = formatDateFns(date, "yyyy-MM-dd");
+                const isCustomized = !!customDayStartTimes[dateStr];
+                return (
                 <TableCell
                   key={date.toISOString()}
                   align="center"
-                  sx={{ 
-                    fontWeight: 700, 
-                    bgcolor: "#f5f5f5", 
-                    fontSize: {xs: 13, sm: 15, md: 17}, 
-                    borderRight: "2px solid #e0e0e0", 
-                    borderTopLeftRadius: date === weekDaysToDisplay[0] ? 16 : 0, 
-                    borderTopRightRadius: date === weekDaysToDisplay[weekDaysToDisplay.length - 1] ? 16 : 0, 
+                  sx={{
+                    fontWeight: 700,
+                    bgcolor: "#f5f5f5",
+                    fontSize: {xs: 13, sm: 15, md: 17},
+                    borderRight: "2px solid #e0e0e0",
+                    borderTopLeftRadius: date === weekDaysToDisplay[0] ? 16 : 0,
+                    borderTopRightRadius: date === weekDaysToDisplay[weekDaysToDisplay.length - 1] ? 16 : 0,
                     p: {xs: 0.5, md: 1},
-                    width: `calc(100% / ${weekDaysToDisplay.length})` // Divide a largura igualmente
+                    width: `calc(100% / ${weekDaysToDisplay.length})`,
+                    position: 'relative' 
                   }}
-                  dangerouslySetInnerHTML={{ __html: weekdayLabel(date) }}
-                />
-              ))}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                    <span dangerouslySetInnerHTML={{ __html: weekdayLabel(date) }} />
+                    <Tooltip title={!leticiaProfessionalId ? "ID da profissional não encontrado" : `Ajustar horário de início para ${dateStr.split('-').reverse().join('/')}${isCustomized ? ` (Atual: ${customDayStartTimes[dateStr]})` : ''}`}>
+                      <span> {/* Span para o Tooltip funcionar com botão desabilitado */}
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => handleOpenDayMenu(e, dateStr)} 
+                          disabled={!leticiaProfessionalId || loading.savingConfig}
+                          sx={{p:0.2, color: isCustomized ? 'primary.main' : 'action.active' }}
+                        >
+                          <EditCalendarIcon fontSize="inherit" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </Box>
+                </TableCell>
+              )})}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -627,48 +877,34 @@ export default function AgendaVisual() {
                   const horariosDoDia = allTimesByDay[dateStr] || [];
                   const horario = horariosDoDia[rowIndex];
 
-                  if (!horario) { 
+                  if (!horario) {
                     return <TableCell key={dateStr + rowIndex + "empty"} sx={{border: "1px solid #eee", p: {xs: 0.5, md: 1}, height: 70, verticalAlign: 'top' }} />;
                   }
                   const sessao = displayableSessions.find(s => s.session_date === dateStr && s.session_time === horario);
-                  
-                  if (rowIndex < 2 && date.getDay() === weekDaysToDisplay[0].getDay()) { 
-                      console.log(`Render Cell [${dateStr} ${horario}]: Encontrou sessão?`, sessao ? sessao.id : 'Não', 'Status:', sessao ? sessao.status : 'N/A');
-                  }
 
                   if (sessao) {
                     let pacoteLabel = "";
                     if (sessao.client_package_id) {
                       const client = clientsData.find(c => c.id === sessao.client_id);
-                      // Adicionar verificação para client.client_packages
-                      if (client && client.client_packages) { 
+                      if (client && client.client_packages) {
                         const currentClientPackage = client.client_packages.find(pkg => pkg.id === sessao.client_package_id);
                         if (currentClientPackage) {
-                          // MODIFICADO: Passa o objeto clientPackage diretamente
-                          const sessaoNum = getPackageSessionNumber(currentClientPackage); 
+                          const sessaoNum = getPackageSessionNumber(currentClientPackage);
                           if (sessaoNum) pacoteLabel = ` ${sessaoNum}`;
                         }
                       }
                     }
                     return (
                       <TableCell
-                        key={sessao.id + dateStr + horario} 
+                        key={sessao.id + dateStr + horario}
                         align="center"
-                        sx={{ 
-                            minHeight: 70, 
-                            height: 70, 
-                            verticalAlign: 'top', 
-                            bgcolor: sessao.status === "done" ? "#b9f6ca" : (sessao.status === "confirmed" ? "#a7d8fd" : "#fff9c4"), 
-                            color: "#111", 
-                            border: "1px solid #e0e0e0", 
-                            fontWeight: 500, 
-                            borderRadius: 2, 
-                            p: {xs: 0.5, md: 1}, 
-                            fontSize: {xs:11, sm:13, md:14}, 
-                            boxShadow: sessao.status === "done" ? "0 1px 4px 0 #b9f6ca99" : (sessao.status === "scheduled" || sessao.status === "confirmed") ? "0 1px 4px 0 #fff9c499" : undefined, 
-                            transition: "box-shadow 0.2s",
-                            overflow: "hidden", 
-                            textOverflow: "ellipsis" 
+                        sx={{
+                            minHeight: 70, height: 70, verticalAlign: 'top',
+                            bgcolor: sessao.status === "done" ? "#b9f6ca" : (sessao.status === "confirmed" ? "#a7d8fd" : "#fff9c4"),
+                            color: "#111", border: "1px solid #e0e0e0", fontWeight: 500, borderRadius: 2,
+                            p: {xs: 0.5, md: 1}, fontSize: {xs:11, sm:13, md:14},
+                            boxShadow: sessao.status === "done" ? "0 1px 4px 0 #b9f6ca99" : (sessao.status === "scheduled" || sessao.status === "confirmed") ? "0 1px 4px 0 #fff9c499" : undefined,
+                            transition: "box-shadow 0.2s", overflow: "hidden", textOverflow: "ellipsis"
                         }}
                       >
                         <Tooltip title={`Período: ${sessao.duration_period || 'N/A'}. Terapia: ${sessao.therapy_type || 'N/A'}`}>
@@ -692,29 +928,43 @@ export default function AgendaVisual() {
                   } else { 
                     return (
                       <TableCell
-                        key={dateStr + horario + "free"} 
+                        key={dateStr + horario + "free"}
                         align="center"
-                        sx={{ 
-                            minHeight: 70, 
-                            height: 70, 
-                            verticalAlign: 'top', 
-                            bgcolor: "#fff", 
-                            color: "#111", 
-                            border: "1px solid #eee", 
-                            fontWeight: 400, 
-                            borderRadius: 2, 
-                            p: {xs: 0.5, md: 1}, 
-                            fontSize: {xs:11, sm:13, md:14}, 
-                            opacity: 0.95, 
-                            transition: "background 0.2s",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis"
+                        sx={{
+                            minHeight: 70, height: 70, verticalAlign: 'top', bgcolor: "#fff", color: "#111",
+                            border: "1px solid #eee", fontWeight: 400, borderRadius: 2, p: {xs: 0.5, md: 1},
+                            fontSize: {xs:11, sm:13, md:14}, opacity: 0.95, transition: "background 0.2s",
+                            overflow: "hidden", textOverflow: "ellipsis", position: 'relative'
                         }}
                       >
-                        <b style={{ fontSize: "inherit" }}>{horario}</b><br />
-                        <span style={{ fontSize: "0.8em", color: "#888", fontWeight: 500 }}>
-                          <AccessTimeIcon sx={{ fontSize: "inherit", mb: "-2px", color: "#bbb" }} /> Livre
-                        </span>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%'}}>
+                           <b style={{ fontSize: "inherit" }}>{horario}</b>
+                           <span style={{ fontSize: "0.8em", color: "#888", fontWeight: 500, display: 'flex', alignItems: 'center' }}>
+                             <AccessTimeIcon sx={{ fontSize: "inherit", mr: 0.5, color: "#bbb" }} /> Livre
+                           </span>
+                        </Box>
+                        <Tooltip title={!leticiaProfessionalId ? "ID da profissional não encontrado" : "Remover este horário livre (cria um bloqueio)"}>
+                          <span> {/* Span para o Tooltip funcionar com botão desabilitado */}
+                            <IconButton
+                              size="small"
+                              onClick={() => handleRemoveFreeSlot(dateStr, horario)}
+                              disabled={isOverallLoading || loading.removingSlot || loading.savingConfig || !leticiaProfessionalId}
+                              sx={{
+                                position: 'absolute',
+                                top: 2,
+                                right: 2,
+                                p: 0.1,
+                                color: 'error.main',
+                                backgroundColor: 'rgba(255,255,255,0.7)',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(255,200,200,0.9)',
+                                }
+                              }}
+                            >
+                              <CloseIcon fontSize="inherit" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
                       </TableCell>
                     );
                   }
@@ -727,7 +977,7 @@ export default function AgendaVisual() {
                   <Tooltip title="Copiar horários livres" arrow>
                     <Button variant="text" size="small" sx={{ minWidth: 0, borderRadius: "50%", p: 1, color: "#00695f", bgcolor: "#f5f5f5", "&:hover": { bgcolor: "#e0f2f1" }, boxShadow: "none", mx: "auto", display: "flex", justifyContent: "center", alignItems: "center" }}
                       onClick={() => handleCopyHorariosLivres(date)}
-                      disabled={isOverallLoading}
+                      disabled={isOverallLoading || loading.removingSlot || loading.savingConfig}
                     >
                       <ContentCopyIcon sx={{ fontSize: {xs:18, md:22} }} />
                     </Button>
@@ -737,7 +987,58 @@ export default function AgendaVisual() {
             </TableRow>
           </TableBody>
         </Table>
-      </Paper>  
+      </Paper>
+      <Menu
+        anchorEl={anchorElMenu}
+        open={Boolean(anchorElMenu)}
+        onClose={handleCloseDayMenu}
+        MenuListProps={{
+          'aria-labelledby': 'day-options-button',
+        }}
+      >
+        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5, minWidth: 280 }}>
+          <Typography variant="subtitle1" gutterBottom sx={{fontWeight: 600}}>
+            Ajustar Início do Expediente
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{mb:1}}>
+            Dia: {selectedDateForMenu ? selectedDateForMenu.split('-').reverse().join('/') : ''}
+          </Typography>
+          <TextField
+            label="Hora Início (HH:MM)"
+            type="time"
+            size="small"
+            value={tempStartTime}
+            onChange={(e) => setTempStartTime(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            fullWidth
+            helperText={`Padrão: ${minutesToTime(DEFAULT_START_EXPEDIENTE_MINUTES)}. Deixe vazio para resetar.`}
+            disabled={loading.savingConfig || !leticiaProfessionalId}
+          />
+          <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{mt:2}}>
+            <Button onClick={handleCloseDayMenu} size="small" color="inherit" disabled={loading.savingConfig}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleResetCustomStartTime} 
+              size="small" 
+              color="warning" 
+              disabled={loading.savingConfig || !leticiaProfessionalId}
+            >
+              {loading.savingConfig && selectedDateForMenu && !tempStartTime ? <CircularProgress size={16} sx={{mr:1}}/> : null}
+              Resetar
+            </Button>
+            <Button 
+              variant="contained" 
+              onClick={handleSaveCustomStartTime} 
+              size="small" 
+              disabled={loading.savingConfig || !leticiaProfessionalId}
+            >
+              {loading.savingConfig && selectedDateForMenu && tempStartTime ? <CircularProgress size={16} sx={{mr:1}}/> : null}
+              Salvar
+            </Button>
+          </Stack>
+        </Box>
+      </Menu>
     </Box>
   );
 }

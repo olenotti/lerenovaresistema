@@ -8,42 +8,43 @@ import ClienteConsultaView from './components/ClienteConsultaView';
 import HorariosFixos from './components/HorariosFixos';
 import ControleAtendimentosView from './components/ControleAtendimentosView';
 import AgendaVisual from './components/AgendaVisual';
+// import BloqueioHorarios from './components/BloqueioHorarios'; // Removido
 import Login from './components/Login';
 import { supabase } from './supabaseClient';
 
-import { 
-  Box, 
-  CssBaseline, 
-  useMediaQuery, 
+import {
+  Box,
+  CssBaseline,
+  useMediaQuery,
   CircularProgress,
-  AppBar,      // Adicionado
-  Toolbar,     // Adicionado
-  IconButton,  // Adicionado
-  Typography   // Adicionado
+  AppBar,
+  Toolbar,
+  IconButton,
+  Typography
 } from '@mui/material';
 import { ThemeProvider, createTheme, useTheme } from '@mui/material/styles';
-import MenuIcon from '@mui/icons-material/Menu'; // Adicionado
+import MenuIcon from '@mui/icons-material/Menu';
 
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#00695f', 
-      light: '#338a7e', 
-      dark: '#004a42',  
+      main: '#00695f',
+      light: '#338a7e',
+      dark: '#004a42',
     },
     secondary: {
-      main: '#f57c00', 
+      main: '#f57c00',
     },
     background: {
-      default: '#f4f6f8', 
-      paper: '#ffffff',    
+      default: '#f4f6f8',
+      paper: '#ffffff',
     },
-    warning: { 
-      light: '#ffb74d', 
+    warning: {
+      light: '#ffb74d',
       main: '#ffa726',
-      dark: '#f57c00', 
+      dark: '#f57c00',
     },
-    error: { 
+    error: {
         main: '#d32f2f',
     }
   },
@@ -53,7 +54,7 @@ const theme = createTheme({
       fontWeight: 700,
     },
     button: {
-      textTransform: 'none', 
+      textTransform: 'none',
     }
   },
   components: {
@@ -67,15 +68,15 @@ const theme = createTheme({
     MuiPaper: {
       styleOverrides: {
         root: {
-          borderRadius: 12, 
+          borderRadius: 12,
         },
       },
     },
      MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundColor: '#ffffff', 
-          borderRadius: 0, 
+          backgroundColor: '#ffffff',
+          borderRadius: 0,
         }
       }
     },
@@ -89,8 +90,8 @@ const theme = createTheme({
     MuiAppBar: {
         styleOverrides: {
             colorPrimary: {
-                backgroundColor: '#ffffff', 
-                color: '#000000', 
+                backgroundColor: '#ffffff',
+                color: '#000000',
             }
         }
     }
@@ -107,9 +108,9 @@ const getCurrentDayMonth = () => {
 };
 
 function App() {
-  const [selectedMenu, setSelectedMenu] = useState(6); 
-  const [mobileOpen, setMobileOpen] = useState(false); // Estado para menu mobile
-  const muiThemeHook = useTheme(); 
+  const [selectedMenu, setSelectedMenu] = useState(6); // Padrão para AgendaVisual
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const muiThemeHook = useTheme();
   const isMobile = useMediaQuery(muiThemeHook.breakpoints.down('md'));
 
   const [session, setSession] = useState(null);
@@ -155,20 +156,20 @@ function App() {
     setLoadingAuth(true);
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
-      setLoadingAuth(false); 
+      // setLoadingAuth(false) será chamado no listener para consistência
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       if (_event === 'SIGNED_IN' && newSession) {
-        setSelectedMenu(6); 
+        setSelectedMenu(6); // Padrão para AgendaVisual
       }
       if (_event === 'SIGNED_OUT') {
-        setClients([]); 
-        setSelectedMenu(6); 
+        setClients([]);
+        setSelectedMenu(6); // Padrão para AgendaVisual
       }
-      if (_event === 'INITIAL_SESSION' || _event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
-        setLoadingAuth(false); 
+      if (['INITIAL_SESSION', 'SIGNED_IN', 'SIGNED_OUT', 'USER_UPDATED', 'PASSWORD_RECOVERY'].includes(_event) || newSession !== session) {
+        setLoadingAuth(false);
       }
     });
 
@@ -177,13 +178,13 @@ function App() {
     };
   }, []);
 
-  const handleDrawerToggle = () => { // Função para controlar o menu mobile
+  const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
   useEffect(() => {
     if (!isMobile && mobileOpen) {
-      setMobileOpen(false); // Fecha o menu se a tela for para desktop
+      setMobileOpen(false);
     }
   }, [isMobile, mobileOpen]);
 
@@ -192,7 +193,7 @@ function App() {
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error('Error logging out:', error);
-      // setLoadingAuth(false) será chamado pelo listener se o logout falhar ou suceder
+      setLoadingAuth(false);
     }
   };
 
@@ -211,14 +212,15 @@ function App() {
     if (!session) {
       return <Login />;
     }
-    // Loader para conteúdo principal enquanto clientes carregam
-    if (loadingClients && session) { 
+
+    if (loadingClients && session) { // Removida condição selectedMenu !== 7
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexGrow: 1 }}>
                 <CircularProgress />
             </Box>
         );
     }
+
     switch (selectedMenu) {
       case 0:
         return <ClientManager clientsProp={clients} fetchClientsProp={fetchClientsForApp} loadingClientsProp={loadingClients} />;
@@ -232,6 +234,8 @@ function App() {
         return <HorariosFixos />;
       case 5:
         return <ControleAtendimentosView />;
+      // case 7: // Removido case para Bloquear Horários
+      //   return <BloqueioHorarios />;
       case 6:
       default:
         return <AgendaVisual />;
@@ -244,12 +248,11 @@ function App() {
       <Box sx={{ display: 'flex', minHeight: '100vh' }}>
         {session && (
           <>
-            {/* AppBar para mobile */}
             {isMobile && (
-              <AppBar 
-                position="fixed" 
-                sx={{ 
-                  zIndex: (theme) => theme.zIndex.drawer + 1 
+              <AppBar
+                position="fixed"
+                sx={{
+                  zIndex: (theme) => theme.zIndex.drawer + 1
                 }}
               >
                 <Toolbar>
@@ -272,8 +275,8 @@ function App() {
               menu={selectedMenu}
               setMenu={setSelectedMenu}
               isMobile={isMobile}
-              mobileOpen={mobileOpen} // Passa estado para SideMenu
-              handleDrawerToggle={handleDrawerToggle} // Passa função para SideMenu
+              mobileOpen={mobileOpen}
+              handleDrawerToggle={handleDrawerToggle}
               drawerWidth={DRAWER_WIDTH}
               onLogout={handleLogout}
               aniversariantesCount={aniversariantesDoDiaApp.length}
@@ -284,19 +287,18 @@ function App() {
           component="main"
           sx={{
             flexGrow: 1,
-            p: session ? 4 : 0, // Mantido EXATAMENTE como no seu código original
-            width: isMobile ? '100%' : undefined, // Mantido EXATAMENTE como no seu código original
-            ml: isMobile ? 0 : undefined,      // Mantido EXATAMENTE como no seu código original
-            mt: 0, 
-            bgcolor: session ? 'background.default' : 'transparent', 
-            minHeight: '100vh', 
+            p: session ? 4 : 0,
+            width: isMobile ? '100%' : undefined,
+            ml: isMobile ? 0 : undefined,
+            mt: 0,
+            bgcolor: session ? 'background.default' : 'transparent',
+            minHeight: '100vh',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'stretch',
           }}
         >
-          {/* Toolbar spacer para o AppBar fixo em mobile */}
-          {session && isMobile && <Toolbar />} 
+          {session && isMobile && <Toolbar />}
           {renderMainContent()}
         </Box>
       </Box>

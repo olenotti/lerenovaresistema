@@ -1,23 +1,25 @@
 import React from "react";
 import { Drawer, List, ListItemIcon, ListItemText, ListItemButton, Typography, Box, Divider, useTheme, Badge } from "@mui/material";
-import EventIcon from "@mui/icons-material/Event";
-import GroupIcon from "@mui/icons-material/Group";
-import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
+import PeopleIcon from '@mui/icons-material/People';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import PersonSearchIcon from "@mui/icons-material/PersonSearch";
-import HistoryEduIcon from "@mui/icons-material/HistoryEdu";
-import AccessTimeIcon from "@mui/icons-material/AccessTime";
-import CalendarViewWeekIcon from "@mui/icons-material/CalendarViewWeek";
+import ScheduleSendIcon from '@mui/icons-material/ScheduleSend';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+// import EventBusyIcon from '@mui/icons-material/EventBusy'; // Ícone para Bloquear Horários - Removido
 import CakeIcon from '@mui/icons-material/Cake';
 import LogoutIcon from '@mui/icons-material/Logout';
 
 const menuItems = [
-  { label: "Agenda Visual", icon: <CalendarViewWeekIcon />, idx: 6 },
-  { label: "Agendamentos", icon: <EventIcon />, idx: 2 },
-  { label: "Controle de Atendimentos", icon: <HistoryEduIcon />, idx: 5 },
-  { label: "Clientes", icon: <GroupIcon />, idx: 0 },
-  { label: "Pacotes", icon: <AssignmentIndIcon />, idx: 1 },
-  { label: "Consulta Cliente", icon: <PersonSearchIcon />, idx: 3 },
-  { label: "Horários Fixos", icon: <AccessTimeIcon />, idx: 4 },
+  { text: 'Clientes', icon: <PeopleIcon />, id: 0, label: 'Clientes' },
+  { text: 'Pacotes', icon: <InventoryIcon />, id: 1, label: 'Pacotes' },
+  { text: 'Agendamentos', icon: <CalendarMonthIcon />, id: 2, label: 'Agendamentos' },
+  { text: 'Consulta Cliente', icon: <PersonSearchIcon />, id: 3, label: 'Consulta Cliente' },
+  { text: 'Horários Fixos', icon: <ScheduleSendIcon />, id: 4, label: 'Horários Fixos' },
+  { text: 'Controle Atendimentos', icon: <AssessmentIcon />, id: 5, label: 'Controle Atendimentos' },
+  { text: 'Agenda Visual', icon: <EventNoteIcon />, id: 6, label: 'Agenda Visual' },
+  // { text: 'Bloquear Horários', icon: <EventBusyIcon />, id: 7, label: 'Bloquear Horários' }, // Removido
 ];
 
 export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDrawerToggle, drawerWidth, onLogout, aniversariantesCount }) {
@@ -29,58 +31,56 @@ export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDr
       {/* Header */}
       <Box sx={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', p: 1,
-        // backgroundColor: muiTheme.palette.primary.dark, // Removido para fundo branco
-        // color: 'white', // Removido
-        height: { xs: '56px', sm: '64px' } 
+        height: { xs: '56px', sm: '64px' }
       }}>
         <Box
           component="img"
           src={logoUrl}
           alt="Le Renovare Logo"
           sx={{
-            height: '100%', 
-            width: 'auto',   
-            maxHeight: '50px', 
-            objectFit: 'contain', 
+            height: '100%',
+            width: 'auto',
+            maxHeight: '50px',
+            objectFit: 'contain',
           }}
         />
       </Box>
-      <Divider sx={{ borderColor: muiTheme.palette.divider }} /> {/* Cor do divisor ajustada */}
+      <Divider sx={{ borderColor: muiTheme.palette.divider }} />
 
       {/* Lista de Menu Principal */}
       <List sx={{ flexGrow: 1, overflowY: 'auto', py: 1 }}>
-        {menuItems.sort((a, b) => a.idx - b.idx).map(item => (
+        {menuItems.map(item => (
           <ListItemButton
-            key={item.idx}
-            selected={menu === item.idx}
+            key={item.id}
+            selected={menu === item.id}
             onClick={() => {
-              setMenu(item.idx);
+              setMenu(item.id);
               if (isMobile) {
                 handleDrawerToggle();
               }
             }}
             sx={{
-              py: 1.5, 
+              py: 1.5,
               '&.Mui-selected': {
-                backgroundColor: muiTheme.palette.primary.main, // Fundo verde para selecionado
+                backgroundColor: muiTheme.palette.primary.main,
                 '&:hover': {
                   backgroundColor: muiTheme.palette.primary.light,
                 },
                 '& .MuiListItemIcon-root, & .MuiListItemText-primary': {
-                  color: muiTheme.palette.common.white, // Ícone e texto brancos quando selecionado
+                  color: muiTheme.palette.common.white,
                 },
               },
               '&:hover': {
-                backgroundColor: muiTheme.palette.action.hover, // Hover para itens não selecionados
+                backgroundColor: muiTheme.palette.action.hover,
               },
-              color: muiTheme.palette.text.secondary, // Cor do texto padrão dos itens (escuro)
+              color: muiTheme.palette.text.secondary,
             }}
           >
-            <ListItemIcon sx={{ color: 'inherit', minWidth: '40px' }}> 
+            <ListItemIcon sx={{ color: 'inherit', minWidth: '40px' }}>
               {item.label === "Clientes" && aniversariantesCount > 0 ? (
                 <Badge
-                  badgeContent={<CakeIcon sx={{ fontSize: '0.9rem', color: muiTheme.palette.error.main }} />} 
-                  color="error" 
+                  badgeContent={<CakeIcon sx={{ fontSize: '0.9rem', color: muiTheme.palette.error.main }} />}
+                  color="error"
                   overlap="circular"
                   anchorOrigin={{
                     vertical: 'top',
@@ -88,9 +88,9 @@ export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDr
                   }}
                   sx={{
                     "& .MuiBadge-badge": {
-                      backgroundColor: 'white', 
+                      backgroundColor: 'white',
                       border: `1px solid ${muiTheme.palette.error.main}`,
-                      minWidth: '16px', height: '16px', padding: '0 2px' 
+                      minWidth: '16px', height: '16px', padding: '0 2px'
                     }
                   }}
                 >
@@ -100,7 +100,7 @@ export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDr
                 item.icon
               )}
             </ListItemIcon>
-            <ListItemText primary={item.label} />
+            <ListItemText primary={item.text} />
           </ListItemButton>
         ))}
       </List>
@@ -108,21 +108,21 @@ export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDr
       {/* Seção de Aniversariantes (na parte de baixo) */}
       {aniversariantesCount > 0 && (
         <>
-          <Divider sx={{ borderColor: muiTheme.palette.divider }} /> {/* Cor do divisor ajustada */}
+          <Divider sx={{ borderColor: muiTheme.palette.divider }} />
           <List dense sx={{ py: 0.5 }}>
             <ListItemButton
               onClick={() => {
-                setMenu(0); 
+                setMenu(0); // Navega para Clientes
                 if (isMobile) {
                   handleDrawerToggle();
                 }
               }}
               sx={{
-                color: muiTheme.palette.warning.dark, // Cor ajustada para fundo claro
+                color: muiTheme.palette.warning.dark,
                 '&:hover': {
                   backgroundColor: muiTheme.palette.action.hover,
                 },
-                py: 1, 
+                py: 1,
               }}
             >
               <ListItemIcon sx={{ minWidth: '40px' }}>
@@ -136,7 +136,7 @@ export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDr
                     }
                   }}
                 >
-                  <CakeIcon sx={{ color: muiTheme.palette.warning.dark }} /> {/* Cor do ícone ajustada */}
+                  <CakeIcon sx={{ color: muiTheme.palette.warning.dark }} />
                 </Badge>
               </ListItemIcon>
               <ListItemText primary={`Aniversariantes Hoje!`} primaryTypographyProps={{ variant: 'body2' }} />
@@ -146,13 +146,13 @@ export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDr
       )}
 
       {/* Botão Sair (último item) */}
-      <Divider sx={{ borderColor: muiTheme.palette.divider }} /> {/* Cor do divisor ajustada */}
+      <Divider sx={{ borderColor: muiTheme.palette.divider }} />
       <List dense sx={{ py: 0.5 }}>
         <ListItemButton
           onClick={onLogout}
           sx={{
-            py: 1, 
-            color: muiTheme.palette.text.secondary, // Cor ajustada para fundo claro
+            py: 1,
+            color: muiTheme.palette.text.secondary,
             '&:hover': {
               backgroundColor: muiTheme.palette.action.hover,
             },
@@ -173,16 +173,16 @@ export default function SideMenu({ menu, setMenu, isMobile, mobileOpen, handleDr
       open={isMobile ? mobileOpen : true}
       onClose={isMobile ? handleDrawerToggle : undefined}
       ModalProps={{
-        keepMounted: true, 
+        keepMounted: true, // Important for SEO and performance by not re-rendering the drawer.
       }}
       sx={{
-        display: { xs: isMobile ? 'block' : 'none', md: 'block' }, 
+        display: { xs: isMobile ? 'block' : 'none', md: 'block' }, // Control display based on isMobile
         width: drawerWidth,
         flexShrink: 0,
-        [`& .MuiDrawer-paper`]: { 
-            width: drawerWidth, 
+        [`& .MuiDrawer-paper`]: {
+            width: drawerWidth,
             boxSizing: 'border-box',
-            boxShadow: '4px 0px 12px rgba(0,0,0,0.15)', // Sombreado adicionado
+            boxShadow: '4px 0px 12px rgba(0,0,0,0.15)',
         },
       }}
     >
